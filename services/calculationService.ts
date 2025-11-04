@@ -1,0 +1,273 @@
+import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool } from '../types';
+
+export const calculateBilletWeight = (
+  shape: string,
+  params: BilletShapeParameters,
+  densityGcm3: number
+): number => {
+  if (!params || densityGcm3 <= 0) {
+    return 0;
+  }
+
+  let volumeCm3 = 0;
+  const toCm = (val?: number) => (val || 0) / 10; // Convert mm to cm
+
+  try {
+    switch (shape) {
+      case 'Block':
+      case 'Plate':
+      case 'Bar': {
+        const l = toCm(params.length);
+        const w = toCm(params.width);
+        const h = toCm(params.height);
+        if (l > 0 && w > 0 && h > 0) volumeCm3 = l * w * h;
+        break;
+      }
+      case 'Cylinder':
+      case 'Rod': {
+        const r = toCm(params.diameter) / 2;
+        const h = toCm(params.height);
+        if (r > 0 && h > 0) volumeCm3 = Math.PI * r * r * h;
+        break;
+      }
+      case 'Tube': {
+        const R = toCm(params.outerDiameter) / 2;
+        const r = toCm(params.innerDiameter) / 2;
+        const h = toCm(params.height);
+        if (R > 0 && h > 0 && r >= 0 && R > r) {
+          volumeCm3 = Math.PI * (R * R - r * r) * h;
+        }
+        break;
+      }
+      case 'Cube': {
+        const s = toCm(params.side);
+        if (s > 0) volumeCm3 = s * s * s;
+        break;
+      }
+      case 'Rectangle Tube': {
+        const L = toCm(params.outerWidth);
+        const W = toCm(params.outerHeight);
+        const h = toCm(params.length);
+        const t = toCm(params.wallThickness);
+
+        if (L > 0 && W > 0 && h > 0 && t > 0 && t * 2 < L && t * 2 < W) {
+          const innerL = L - 2 * t;
+          const innerW = W - 2 * t;
+          volumeCm3 = (L * W - innerL * innerW) * h;
+        }
+        break;
+      }
+      default:
+        volumeCm3 = 0;
+    }
+  } catch (e) {
+    console.error(`Error calculating volume for shape ${shape}:`, e);
+    return 0;
+  }
+  
+  if (volumeCm3 <= 0 || !isFinite(volumeCm3)) {
+      return 0;
+  }
+
+  const weightGrams = volumeCm3 * densityGcm3;
+  const weightKg = weightGrams / 1000;
+  
+  return parseFloat(weightKg.toFixed(4));
+};
+
+export const calculateOperationTime = (operation: Operation, process: Process, tool: Tool | null): number => {
+  if (!process?.formula) {
+    return 0;
+  }
+
+  const executionParams: { [key: string]: number } = { ...operation.parameters };
+
+  // 1. Initialize calculated values
+  let spindleSpeed = 0;
+  let feedRate = 0;
+
+  // 2. Get tool properties, allowing overrides from operation.parameters
+  const cuttingSpeed = operation.parameters.cuttingSpeed ?? tool?.cuttingSpeedVc ?? 0;
+  const toolDiameter = tool?.diameter ?? 0;
+  
+  // 3. Differentiate between process groups for accurate speed/feed calculations
+  if (process.group === 'Turning') {
+    // --- TURNING LOGIC ---
+    // For lathe tools, 'feedPerTooth' is used to store feedPerRev.
+    const feedPerRev = operation.parameters.feedPerRev ?? tool?.feedPerTooth ?? 0;
+    
+    // For turning, RPM is based on workpiece diameter, not tool diameter (except for drilling)
+    const workpieceDiameter = 
+      process.name === 'Drilling (on Lathe)' ? toolDiameter :
+      (operation.parameters.diameterStart ?? operation.parameters.facingDiameter ?? operation.parameters.partingDiameter ?? toolDiameter);
+
+    if (workpieceDiameter > 0 && cuttingSpeed > 0) {
+      spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * workpieceDiameter);
+    }
+    if (spindleSpeed > 0 && feedPerRev > 0) {
+      feedRate = spindleSpeed * feedPerRev;
+    }
+    
+    // Add calculated values to execution context for the formula
+    executionParams.feedPerRev = feedPerRev;
+
+  } else if (process.group === 'Sawing') {
+    // --- SAWING LOGIC ---
+    const feedPerTooth = operation.parameters.feedPerTooth ?? tool?.feedPerTooth ?? 0;
+
+    if (process.name === 'Band Saw Cut-Off') {
+        const bladeTPI = operation.parameters.bladeTPI ?? 0;
+        if (feedPerTooth > 0 && bladeTPI > 0 && cuttingSpeed > 0) {
+            // Formula from user spec: vf = ft * (TPI * 25.4) * Nb
+            feedRate = feedPerTooth * (bladeTPI * 25.4) * cuttingSpeed;
+        }
+    } else if (process.name === 'Circular Saw Cut-Off') {
+        const numberOfTeeth = operation.parameters.numberOfTeeth ?? tool?.numberOfTeeth ?? 1;
+        if (toolDiameter > 0 && cuttingSpeed > 0) {
+            spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
+        }
+        if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
+            feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
+        }
+    } else if (process.name === 'Abrasive Cut-Off') {
+        // Feed rate is a direct input for this process
+        feedRate = operation.parameters.feedRate ?? 0;
+    }
+  } else {
+    // --- MILLING/OTHER LOGIC ---
+    const feedPerTooth = operation.parameters.feedPerTooth ?? tool?.feedPerTooth ?? 0;
+    const numberOfTeeth = operation.parameters.numberOfTeeth ?? tool?.numberOfTeeth ?? 1;
+
+    if (toolDiameter > 0 && cuttingSpeed > 0) {
+      spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
+    }
+    if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
+      feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
+    }
+    
+    // Add values to execution context
+    executionParams.feedPerTooth = feedPerTooth;
+    executionParams.numberOfTeeth = numberOfTeeth;
+  }
+
+  // Make common calculated and tool values available to all formulas
+  executionParams.spindleSpeed = spindleSpeed;
+  executionParams.feedRate = feedRate || 1; // Fallback to 1 to avoid division by zero
+  executionParams.toolDiameter = toolDiameter;
+
+  const allParamNames = Object.keys(executionParams);
+  const paramValues = allParamNames.map(name => executionParams[name]);
+  
+  try {
+    // Create a function with all available parameters in its scope
+    const formulaFn = new Function(...allParamNames, 'Math', `return ${process.formula}`);
+    const result = formulaFn(...paramValues, Math);
+    
+    // Check for invalid results (NaN, Infinity, negative time)
+    if (typeof result !== 'number' || !isFinite(result) || result < 0) {
+      console.warn(`Invalid result from formula for process "${process.name}":`, result);
+      return 0;
+    }
+    
+    return result;
+  } catch (e) {
+    console.error(`Error executing formula for process "${process.name}":`, e);
+    console.error(`Formula:`, process.formula);
+    console.error(`Parameters:`, executionParams);
+    return 0;
+  }
+};
+
+export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machine[], processes: Process[], tools: Tool[]): MachiningResult => {
+  const {
+    batchVolume,
+    materialCostPerKg,
+    transportCostPerKg,
+    surfaceTreatmentCostPerKg,
+    setups,
+    laborRatePerHour,
+    overheadRatePercentage,
+    rawMaterialWeightKg,
+    finishedPartWeightKg
+  } = inputs;
+
+  // 1. Material Cost Calculation
+  const totalMaterialCostPerKg = (materialCostPerKg || 0) + (transportCostPerKg || 0) + (surfaceTreatmentCostPerKg || 0);
+  const rawMaterialPartCost = rawMaterialWeightKg * totalMaterialCostPerKg;
+  const materialCost = rawMaterialPartCost * batchVolume;
+
+
+  // 2. Time and Machine Cost Calculation
+  let totalCuttingTimeMin = 0;
+  let totalSetupTimeMin = 0;
+  let totalToolChangeTimeMin = 0;
+  let machineCost = 0;
+  const operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[] = [];
+
+  setups.forEach(setup => {
+      const machine = machines.find(m => m.id === setup.machineId);
+      const efficiencyDivisor = (setup.efficiency > 0 && setup.efficiency <= 1) ? setup.efficiency : 1;
+
+      let timeOnThisMachineMin = 0;
+      
+      const effectiveSetupTime = (setup.timePerSetupMin || 0) / efficiencyDivisor;
+      totalSetupTimeMin += effectiveSetupTime;
+      timeOnThisMachineMin += effectiveSetupTime;
+      
+      const effectiveToolChangeTime = (setup.operations.length * ((setup.toolChangeTimeSec || 0) / 60)) / efficiencyDivisor;
+      totalToolChangeTimeMin += effectiveToolChangeTime;
+      timeOnThisMachineMin += effectiveToolChangeTime;
+
+      setup.operations.forEach(op => {
+          const processDef = processes.find(p => p.name === op.processName);
+          const tool = op.toolId ? tools.find(t => t.id === op.toolId) : null;
+          const rawOpTimeMin = processDef ? calculateOperationTime(op, processDef, tool) : 0;
+          const effectiveOpTimeMin = rawOpTimeMin / efficiencyDivisor;
+          
+          operationTimeBreakdown.push({
+              processName: op.processName,
+              timeMin: effectiveOpTimeMin,
+              id: op.id,
+              machineName: machine?.name,
+          });
+          totalCuttingTimeMin += effectiveOpTimeMin;
+          timeOnThisMachineMin += effectiveOpTimeMin;
+      });
+      
+      if (machine) {
+          machineCost += (timeOnThisMachineMin / 60) * machine.hourlyRate;
+      }
+  });
+
+  const totalMachineTimeMinutes = totalCuttingTimeMin + totalSetupTimeMin + totalToolChangeTimeMin;
+  const totalMachineTimeHours = totalMachineTimeMinutes / 60;
+  const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutes / batchVolume : 0;
+  
+  // 3. Cost Calculation
+  const laborCost = totalMachineTimeHours * laborRatePerHour;
+  const totalDirectCost = machineCost + laborCost + materialCost;
+  const overheadCost = totalDirectCost * (overheadRatePercentage / 100);
+  const totalCost = totalDirectCost + overheadCost;
+  const costPerPart = batchVolume > 0 ? totalCost / batchVolume : 0;
+  
+  const results: MachiningResult = {
+    rawMaterialWeightKg,
+    finishedPartWeightKg,
+    totalMaterialCostPerKg,
+    rawMaterialPartCost,
+    materialCost,
+    operationTimeBreakdown,
+    totalCuttingTimeMin,
+    totalSetupTimeMin,
+    totalToolChangeTimeMin,
+    cycleTimePerPartMin,
+    totalMachineTimeHours,
+    machineCost,
+    laborCost,
+    overheadCost,
+    totalCost,
+    costPerPart,
+  };
+
+  return results;
+};
