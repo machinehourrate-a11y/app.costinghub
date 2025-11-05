@@ -1,3 +1,5 @@
+
+
 import type { MaterialProperty, MaterialMasterItem, Machine, Process, SubscriptionPlan, Tool, Calculation, MachiningInput, MachiningResult } from "./types";
 
 // Helper to parse value and unit
@@ -78,7 +80,14 @@ const rawMaterialsData: any[] = [
 
 
 // FIX: Cast to `any` to bypass strict type check for seed data missing db-generated columns like `created_at` and `user_id`.
-export const INITIAL_MATERIALS_MASTER: MaterialMasterItem[] = rawMaterialsData.map(material => {
+export const INITIAL_MATERIALS_MASTER: MaterialMasterItem[] = rawMaterialsData
+  .filter(material => {
+    const density = material.properties['Density (g/cm³)'];
+    const cost = material.properties['Cost Per Kg (USD)'];
+    const isValid = (value: any) => value !== null && value !== "N/A" && value !== "" && parseFloat(value) > 0;
+    return isValid(density) && isValid(cost);
+  })
+  .map(material => {
   const newProperties: { [key: string]: MaterialProperty } = {};
   for (const [key, value] of Object.entries(material.properties)) {
     // FIX: Cast `value` from `unknown` to the type expected by `parsePropertyValue`.
@@ -459,7 +468,9 @@ const CNC_MILL_SHOWCASE: Calculation = {
     createdAt: new Date().toISOString(), annualVolume: 5000, batchVolume: 200, unitSystem: 'Metric', materialCategory: 'N - Non-ferrous', materialType: 'mat_011',
     rawMaterialProcess: 'Billet', billetShape: 'Block', billetShapeParameters: { length: 120, width: 80, height: 40 },
     rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, partSurfaceAreaM2: 0.05, materialCostPerKg: 4, materialDensityGcm3: 2.7, transportCostPerKg: 0.3,
-    surfaceTreatments: [{ id: 'st1', name: 'Anodizing', cost: 2, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 55, overheadRatePercentage: 150, setups: [{
+    surfaceTreatments: [{ id: 'st1', name: 'Anodizing', cost: 2, unit: 'per_kg', based_on: 'finished_weight' }], 
+    markups: { general: 5, admin: 8, sales: 7, miscellaneous: 2, packing: 3, transport: 5, profit: 20, duty: 0 },
+    setups: [{
       id: 'setup_mill_1', name: 'Milling Operations', machineId: 'mach_001', timePerSetupMin: 45, toolChangeTimeSec: 10, efficiency: 0.95,
       operations: [
         { id: 'op_m1', processName: 'Face Milling', toolId: 'tool_004', parameters: { faceLength: 120, faceWidth: 80, depthOfCut: 1, radialEngagement: 40 } },
@@ -468,7 +479,6 @@ const CNC_MILL_SHOWCASE: Calculation = {
       ]
     }]
   },
-  results: { rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, totalMaterialCostPerKg: 4.3, rawMaterialPartCost: 4.47, materialCost: 894.4, surfaceTreatmentCost: 300, operationTimeBreakdown: [{ processName: 'Face Milling', timeMin: 0.43, id: 'op_m1' }, { processName: 'Pocketing (MRR)', timeMin: 1.1, id: 'op_m2' }, { processName: 'Drilling (on Mill)', timeMin: 0.58, id: 'op_m3' }], totalCuttingTimeMin: 2.11, totalSetupTimeMin: 47.37, totalToolChangeTimeMin: 0.53, cycleTimePerPartMin: 0.25, totalMachineTimeHours: 0.83, machineCost: 62.5, laborCost: 45.88, overheadCost: 2095.17, totalCost: 3397.95, costPerPart: 16.99 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -479,7 +489,9 @@ const CNC_LATHE_SHOWCASE: Calculation = {
     createdAt: new Date().toISOString(), annualVolume: 10000, batchVolume: 500, unitSystem: 'Metric', materialCategory: 'M - Stainless Steel', materialType: 'mat_005',
     rawMaterialProcess: 'Billet', billetShape: 'Cylinder', billetShapeParameters: { diameter: 80, height: 40 },
     rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, partSurfaceAreaM2: 0.02, materialCostPerKg: 4.5, materialDensityGcm3: 8, transportCostPerKg: 0.2,
-    surfaceTreatments: [{ id: 'st1', name: 'Passivation', cost: 1, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 60, overheadRatePercentage: 160, setups: [{
+    surfaceTreatments: [{ id: 'st1', name: 'Passivation', cost: 1, unit: 'per_kg', based_on: 'finished_weight' }],
+    markups: { general: 5, admin: 10, sales: 5, miscellaneous: 1, packing: 2, transport: 4, profit: 25, duty: 0 },
+    setups: [{
       id: 'setup_lathe_1', name: 'Turning Operations', machineId: 'mach_002', timePerSetupMin: 60, toolChangeTimeSec: 15, efficiency: 0.90,
       operations: [
         { id: 'op_l1', processName: 'Facing', toolId: 'tool_003', parameters: { facingDiameter: 80, feedPerRev: 0.2 } },
@@ -488,7 +500,6 @@ const CNC_LATHE_SHOWCASE: Calculation = {
       ]
     }]
   },
-  results: { rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, totalMaterialCostPerKg: 4.7, rawMaterialPartCost: 7.57, materialCost: 3783.5, surfaceTreatmentCost: 600, operationTimeBreakdown: [{ processName: 'Facing', timeMin: 0.21, id: 'op_l1' }, { processName: 'Turning (OD/ID)', timeMin: 0.21, id: 'op_l2' }, { processName: 'Grooving', timeMin: 0.07, id: 'op_l3' }], totalCuttingTimeMin: 0.49, totalSetupTimeMin: 66.67, totalToolChangeTimeMin: 0.83, cycleTimePerPartMin: 0.14, totalMachineTimeHours: 1.13, machineCost: 102, laborCost: 67.8, overheadCost: 7285.28, totalCost: 11838.58, costPerPart: 23.68 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -499,12 +510,13 @@ const SAW_SHOWCASE: Calculation = {
     createdAt: new Date().toISOString(), annualVolume: 20000, batchVolume: 1000, unitSystem: 'Metric', materialCategory: 'P - Steel', materialType: 'mat_001',
     rawMaterialProcess: 'Billet', billetShape: 'Bar', billetShapeParameters: { length: 1000, width: 50, height: 50 },
     rawMaterialWeightKg: 19.68, finishedPartWeightKg: 0.98, partSurfaceAreaM2: 0, materialCostPerKg: 1.5, materialDensityGcm3: 7.87, transportCostPerKg: 0.1,
-    surfaceTreatments: [], laborRatePerHour: 40, overheadRatePercentage: 120, setups: [{
+    surfaceTreatments: [],
+    markups: { general: 2, admin: 5, sales: 5, miscellaneous: 1, packing: 1, transport: 3, profit: 15, duty: 0 },
+    setups: [{
       id: 'setup_saw_1', name: 'Sawing Operation', machineId: 'mach_003', timePerSetupMin: 15, toolChangeTimeSec: 0, efficiency: 1,
       operations: [{ id: 'op_s1', processName: 'Band Saw Cut-Off', toolId: 'tool_011', parameters: { cutWidth: 50, bladeTPI: 10, allowance: 5 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 0.98, finishedPartWeightKg: 0.98, totalMaterialCostPerKg: 1.6, rawMaterialPartCost: 1.57, materialCost: 1570, surfaceTreatmentCost: 0, operationTimeBreakdown: [{ processName: 'Band Saw Cut-Off', timeMin: 0.34, id: 'op_s1' }], totalCuttingTimeMin: 0.34, totalSetupTimeMin: 15, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.02, totalMachineTimeHours: 0.26, machineCost: 10.23, laborCost: 10.23, overheadCost: 1913.3, totalCost: 3503.76, costPerPart: 3.5 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -515,12 +527,13 @@ const GEAR_CUTTER_SHOWCASE: Calculation = {
     createdAt: new Date().toISOString(), annualVolume: 2000, batchVolume: 100, unitSystem: 'Metric', materialCategory: 'P - Steel', materialType: 'mat_003',
     rawMaterialProcess: 'Forging', billetShape: undefined, billetShapeParameters: undefined,
     rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, partSurfaceAreaM2: 0.04, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
-    surfaceTreatments: [{ id: 'st1', name: 'Carburizing', cost: 3, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 70, overheadRatePercentage: 200, setups: [{
+    surfaceTreatments: [{ id: 'st1', name: 'Carburizing', cost: 3, unit: 'per_kg', based_on: 'finished_weight' }],
+    markups: { general: 5, admin: 10, sales: 8, miscellaneous: 3, packing: 4, transport: 6, profit: 30, duty: 5 },
+    setups: [{
       id: 'setup_gear_1', name: 'Gear Hobbing', machineId: 'mach_009', timePerSetupMin: 90, toolChangeTimeSec: 120, efficiency: 0.85,
       operations: [{ id: 'op_g1', processName: 'Gear Hobbing', toolId: 'tool_001', parameters: { faceWidthB: 40, feedPerRevFa: 1.5, allowance: 10, numberOfPasses: 1 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, totalMaterialCostPerKg: 3.7, rawMaterialPartCost: 9.25, materialCost: 925, surfaceTreatmentCost: 630, operationTimeBreakdown: [{ processName: 'Gear Hobbing', timeMin: 1.47, id: 'op_g1' }], totalCuttingTimeMin: 1.47, totalSetupTimeMin: 105.88, totalToolChangeTimeMin: 2.35, cycleTimePerPartMin: 1.1, totalMachineTimeHours: 1.83, machineCost: 237.53, laborCost: 127.88, overheadCost: 3840.82, totalCost: 5761.23, costPerPart: 57.61 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -531,12 +544,13 @@ const GRINDER_SHOWCASE: Calculation = {
     createdAt: new Date().toISOString(), annualVolume: 15000, batchVolume: 1000, unitSystem: 'Metric', materialCategory: 'H - Hardened Steel', materialType: 'mat_016',
     rawMaterialProcess: 'Billet', billetShape: 'Block', billetShapeParameters: { length: 60, width: 60, height: 25 },
     rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, partSurfaceAreaM2: 0, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
-    surfaceTreatments: [], laborRatePerHour: 65, overheadRatePercentage: 180, setups: [{
+    surfaceTreatments: [],
+    markups: { general: 3, admin: 7, sales: 5, miscellaneous: 2, packing: 2, transport: 3, profit: 22, duty: 0 },
+    setups: [{
       id: 'setup_grinder_1', name: 'Grinding Operation', machineId: 'mach_008', timePerSetupMin: 30, toolChangeTimeSec: 0, efficiency: 0.98,
       operations: [{ id: 'op_gr1', processName: 'Surface Grinding (Reciprocating)', toolId: 'tool_010', parameters: { lengthL: 60, widthW: 60, stockToRemoveSr: 0.1, depthOfCutAp: 0.01, tableSpeedVw: 6000, overlapRatioU: 0.3, sparkOutStrokesNso: 3, allowance: 10, handlingTime: 0.2, dressingTime: 2, partsBetweenDress: 100 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, totalMaterialCostPerKg: 3.7, rawMaterialPartCost: 2.63, materialCost: 2627, surfaceTreatmentCost: 0, operationTimeBreakdown: [{ processName: 'Surface Grinding (Reciprocating)', timeMin: 0.62, id: 'op_gr1' }], totalCuttingTimeMin: 0.62, totalSetupTimeMin: 30.61, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.03, totalMachineTimeHours: 0.52, machineCost: 33.82, laborCost: 33.82, overheadCost: 4851.91, totalCost: 7546.54, costPerPart: 7.55 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 

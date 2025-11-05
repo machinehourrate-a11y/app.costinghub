@@ -1,4 +1,5 @@
 
+
 // This file is self-contained and does not require auto-generated Supabase types.
 
 export type Json =
@@ -153,6 +154,17 @@ export interface SurfaceTreatment {
   based_on?: 'raw_weight' | 'finished_weight';
 }
 
+export interface Markups {
+  general: number;
+  admin: number;
+  sales: number;
+  miscellaneous: number;
+  packing: number;
+  transport: number;
+  profit: number;
+  duty: number;
+}
+
 export interface MachiningInput {
   // Metadata
   id: string;
@@ -186,10 +198,22 @@ export interface MachiningInput {
 
   // Machining Operations & Setup
   setups: Setup[]; 
-  laborRatePerHour: number;
-  overheadRatePercentage: number;
+  
+  // Markup
+  markups: Markups;
 }
 
+
+export interface MarkupCosts {
+  general: number;
+  admin: number;
+  sales: number;
+  miscellaneous: number;
+  packing: number;
+  transport: number;
+  profit: number;
+  duty: number;
+}
 
 export interface MachiningResult {
   // Material Analysis
@@ -209,9 +233,8 @@ export interface MachiningResult {
   totalMachineTimeHours: number;
   
   // Cost Analysis
-  machineCost: number;
-  laborCost: number;
-  overheadCost: number;
+  machiningCost: number;
+  markupCosts: MarkupCosts;
   totalCost: number;
   costPerPart: number;
 }
@@ -378,6 +401,21 @@ export type GeminiToolSuggestion = Omit<Tool, 'id' | 'user_id' | 'created_at' | 
 export type GeminiProcessSuggestion = Omit<Process, 'id' | 'user_id' | 'created_at'>;
 export type GeminiMachineSuggestion = Omit<Machine, 'id' | 'user_id' | 'created_at' | 'name'>;
 
+export interface Feedback {
+  id?: string;
+  user_id: string;
+  user_email: string;
+  usage_duration: string;
+  usage_experience: string;
+  feature_requests: string;
+  suggested_changes: string;
+  created_at?: string;
+}
+
+export interface FeedbackPageProps {
+  user: User;
+  onSubmit: (feedbackData: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => Promise<void>;
+}
 
 export type View = 
   | 'auth'
@@ -392,4 +430,5 @@ export type View =
   | 'superadmin' 
   | 'subscription' 
   | 'toolLibrary' 
-  | 'subscribersList';
+  | 'subscribersList'
+  | 'feedback';

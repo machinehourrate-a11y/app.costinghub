@@ -1,4 +1,6 @@
-import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool } from '../types';
+
+
+import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool, MarkupCosts } from '../types';
 
 export const calculateBilletWeight = (
   shape: string,
@@ -185,8 +187,7 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
     transportCostPerKg,
     surfaceTreatments,
     setups,
-    laborRatePerHour,
-    overheadRatePercentage,
+    markups,
     rawMaterialWeightKg,
     finishedPartWeightKg,
     partSurfaceAreaM2
@@ -198,28 +199,24 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   const materialCost = rawMaterialPartCost * batchVolume;
 
   // 2. Surface Treatment Cost
-  let surfaceTreatmentCostPerPart = 0;
-  if (surfaceTreatments && surfaceTreatments.length > 0) {
-    surfaceTreatmentCostPerPart = surfaceTreatments.reduce((total, treatment) => {
-        if (treatment.unit === 'per_kg') {
-            // Default to finished weight if based_on is not specified for backward compatibility
-            const weightToUse = treatment.based_on === 'raw_weight' ? rawMaterialWeightKg : finishedPartWeightKg;
-            return total + (treatment.cost * weightToUse);
-        }
-        if (treatment.unit === 'per_area') {
-            return total + (treatment.cost * partSurfaceAreaM2);
-        }
-        return total;
-    }, 0);
-  }
+  const surfaceTreatmentCostPerPart = (surfaceTreatments || []).reduce((total, treatment) => {
+      if (treatment.unit === 'per_kg') {
+          const weightToUse = treatment.based_on === 'raw_weight' ? rawMaterialWeightKg : finishedPartWeightKg;
+          return total + (treatment.cost * weightToUse);
+      }
+      if (treatment.unit === 'per_area') {
+          return total + (treatment.cost * partSurfaceAreaM2);
+      }
+      return total;
+  }, 0);
   const surfaceTreatmentCost = surfaceTreatmentCostPerPart * batchVolume;
 
 
-  // 3. Time and Machine Cost Calculation
+  // 3. Time and Machining Cost Calculation
   let totalCuttingTimeMin = 0;
   let totalSetupTimeMin = 0;
   let totalToolChangeTimeMin = 0;
-  let machineCost = 0;
+  let totalMachiningCostForBatch = 0;
   const operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[] = [];
 
   setups.forEach(setup => {
@@ -253,7 +250,7 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
       });
       
       if (machine) {
-          machineCost += (timeOnThisMachineMin / 60) * machine.hourlyRate;
+        totalMachiningCostForBatch += (timeOnThisMachineMin / 60) * machine.hourlyRate;
       }
   });
 
@@ -261,13 +258,34 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   const totalMachineTimeHours = totalMachineTimeMinutes / 60;
   const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutes / batchVolume : 0;
   
-  // 4. Cost Calculation
-  const laborCost = totalMachineTimeHours * laborRatePerHour;
-  const totalDirectCost = machineCost + laborCost + materialCost + surfaceTreatmentCost;
-  const overheadCost = totalDirectCost * (overheadRatePercentage / 100);
-  const totalCost = totalDirectCost + overheadCost;
-  const costPerPart = batchVolume > 0 ? totalCost / batchVolume : 0;
+  const machiningCostPerPart = batchVolume > 0 ? totalMachiningCostForBatch / batchVolume : 0;
   
+  // 4. Markup Calculation
+  const baseCost1 = rawMaterialPartCost + machiningCostPerPart;
+  const baseCost2 = baseCost1 + surfaceTreatmentCostPerPart;
+  
+  const markupCostsPerPart: MarkupCosts = {
+    general: baseCost1 * ((markups.general || 0) / 100),
+    admin: baseCost1 * ((markups.admin || 0) / 100),
+    sales: baseCost1 * ((markups.sales || 0) / 100),
+    miscellaneous: baseCost1 * ((markups.miscellaneous || 0) / 100),
+    packing: baseCost2 * ((markups.packing || 0) / 100),
+    transport: baseCost2 * ((markups.transport || 0) / 100),
+    profit: baseCost2 * ((markups.profit || 0) / 100),
+    duty: baseCost2 * ((markups.duty || 0) / 100),
+  };
+  
+  const totalMarkupCostPerPart = Object.values(markupCostsPerPart).reduce((sum, cost) => sum + cost, 0);
+
+  // 5. Final Cost Calculation
+  const costPerPart = baseCost1 + surfaceTreatmentCostPerPart + totalMarkupCostPerPart;
+  const totalCost = costPerPart * batchVolume;
+
+  const markupCostsForBatch: MarkupCosts = Object.keys(markupCostsPerPart).reduce((acc, key) => {
+    (acc as any)[key] = (markupCostsPerPart as any)[key] * batchVolume;
+    return acc;
+  }, {} as MarkupCosts);
+
   const results: MachiningResult = {
     rawMaterialWeightKg,
     finishedPartWeightKg,
@@ -281,9 +299,8 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
     totalToolChangeTimeMin,
     cycleTimePerPartMin,
     totalMachineTimeHours,
-    machineCost,
-    laborCost,
-    overheadCost,
+    machiningCost: totalMachiningCostForBatch,
+    markupCosts: markupCostsForBatch,
     totalCost,
     costPerPart,
   };

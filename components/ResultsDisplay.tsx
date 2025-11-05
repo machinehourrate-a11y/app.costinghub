@@ -1,9 +1,12 @@
+
+
 import React from 'react';
-import type { MachiningResult } from '../types';
+import type { MachiningResult, MarkupCosts, Markups } from '../types';
 
 interface ResultsDisplayProps {
   results: MachiningResult | null;
   currency: string;
+  markups: Markups;
 }
 
 const formatCurrency = (value: number, currency: string) => {
@@ -26,7 +29,18 @@ const ResultRow: React.FC<{ label: string; value: string; className?: string }> 
   </div>
 );
 
-export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currency }) => {
+const markupLabels: { [key in keyof MarkupCosts]: string } = {
+  general: 'General Markup',
+  admin: 'Admin Markup',
+  sales: 'Sales Markup',
+  miscellaneous: 'Misc. Markup',
+  packing: 'Packing Markup',
+  transport: 'Transport Markup',
+  profit: 'Profit Markup',
+  duty: 'Duty Markup',
+};
+
+export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currency, markups }) => {
   if (!results) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center text-text-secondary p-8">
@@ -38,6 +52,14 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currenc
       </div>
     );
   }
+  
+  const allMarkupCosts = Object.entries(results.markupCosts || {})
+    .filter(([, value]) => value > 0)
+    .map(([key, value]) => ({
+      label: markupLabels[key as keyof MarkupCosts],
+      value: value,
+      percentage: markups[key as keyof Markups] || 0,
+    }));
   
   return (
     <div className="space-y-6">
@@ -79,10 +101,16 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currenc
       <div>
           <h3 className="text-lg font-semibold text-primary mb-2">Cost Breakdown (Total Batch)</h3>
            <div className="bg-surface rounded-lg p-2 space-y-1">
-              <ResultRow label="Machine Cost" value={formatCurrency(results.machineCost, currency)} className="bg-background/50"/>
-              <ResultRow label="Labor Cost" value={formatCurrency(results.laborCost, currency)} className=""/>
-              <ResultRow label="Surface Treatment Cost" value={formatCurrency(results.surfaceTreatmentCost, currency)} className="bg-background/50" />
-              <ResultRow label="Overhead Cost" value={formatCurrency(results.overheadCost, currency)} className=""/>
+              <ResultRow label="Machining Cost" value={formatCurrency(results.machiningCost, currency)} className="bg-background/50"/>
+              <ResultRow label="Surface Treatment Cost" value={formatCurrency(results.surfaceTreatmentCost, currency)} className=""/>
+              {allMarkupCosts.map((markup, index) => (
+                <ResultRow 
+                  key={markup.label}
+                  label={`${markup.label} (${markup.percentage}%)`}
+                  value={formatCurrency(markup.value, currency)}
+                  className={index % 2 !== 0 ? 'bg-background/50' : ''}
+                />
+              ))}
            </div>
       </div>
       

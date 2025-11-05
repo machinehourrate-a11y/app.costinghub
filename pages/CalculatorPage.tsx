@@ -1,5 +1,7 @@
+
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment } from '../types';
+import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups } from '../types';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -42,8 +44,16 @@ const INITIAL_INPUT: MachiningInput = {
   transportCostPerKg: 0,
   surfaceTreatments: [],
   setups: [],
-  laborRatePerHour: 50,
-  overheadRatePercentage: 150,
+  markups: {
+    general: 0,
+    admin: 0,
+    sales: 0,
+    miscellaneous: 0,
+    packing: 0,
+    transport: 0,
+    profit: 0,
+    duty: 0,
+  },
 };
 
 const currencySymbols: { [key: string]: string } = {
@@ -52,6 +62,44 @@ const currencySymbols: { [key: string]: string } = {
   GBP: '£',
   INR: '₹',
 };
+
+const markupLabels: { [key in keyof Markups]: string } = {
+  general: 'General',
+  admin: 'Admin',
+  sales: 'Sales',
+  miscellaneous: 'Miscellaneous',
+  packing: 'Packing',
+  transport: 'Transport',
+  profit: 'Profit',
+  duty: 'Duty',
+};
+
+
+const MarkupSlider: React.FC<{
+  label: string;
+  name: keyof Markups;
+  value: number;
+  onChange: (name: keyof Markups, value: string) => void;
+}> = ({ label, name, value, onChange }) => (
+  <div className="flex items-center gap-4">
+    <label className="text-sm font-medium text-text-secondary w-28 shrink-0">
+      {label}
+    </label>
+    <input
+      type="range"
+      min="0"
+      max="100"
+      step="1"
+      name={name}
+      value={value}
+      onChange={e => onChange(name, e.target.value)}
+      className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
+    />
+    <span className="font-semibold text-text-primary text-center bg-background/50 border border-border rounded-md py-1 w-20 shrink-0">
+        {value}%
+    </span>
+  </div>
+);
 
 export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation }) => {
   const [formData, setFormData] = useState<MachiningInput>(INITIAL_INPUT);
@@ -82,22 +130,18 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   
   useEffect(() => {
     if (existingCalculation) {
-      // Merge with initial state to ensure all fields, especially arrays like 'setups' and 'surfaceTreatments', are present.
-      // This prevents errors when loading older calculations that may not have these fields.
       setFormData({
         ...INITIAL_INPUT,
         ...existingCalculation.inputs,
         setups: existingCalculation.inputs.setups || [],
         surfaceTreatments: existingCalculation.inputs.surfaceTreatments || [],
-        // Ensure unit system from existing calc is preserved, defaulting to Metric.
+        markups: existingCalculation.inputs.markups || INITIAL_INPUT.markups,
         unitSystem: existingCalculation.inputs.unitSystem || 'Metric',
       });
       setSaveStatus('saved');
     } else {
       const newCalcNumber = `${user?.calcPrefix || 'EST-'}${user?.calcNextNumber || 101}`;
       setFormData(prev => {
-        // Only initialize fully if the form hasn't been touched (e.g., no ID yet).
-        // This prevents wiping user input when the `user` prop updates after an auto-save.
         if (prev.id) {
           return { ...prev, calculationNumber: newCalcNumber };
         }
@@ -110,7 +154,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       });
       setSaveStatus('idle');
     }
-    isInitialMount.current = true; // Flag to prevent auto-save on initial load
+    isInitialMount.current = true;
   }, [existingCalculation, user]);
 
   useEffect(() => {
@@ -150,7 +194,6 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     
     const newWeightKg = calculateBilletWeight(billetShape!, billetShapeParameters!, materialDensityGcm3);
     
-    // This check is crucial to prevent re-renders if the calculated value is the same.
     if (formData.rawMaterialWeightKg !== newWeightKg) {
       setFormData(prev => ({ ...prev, rawMaterialWeightKg: newWeightKg }));
     }
@@ -214,8 +257,6 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     if (!file) return;
 
     setIsUploading(true);
-    // Simulate an upload delay and use a local URL for the preview.
-    // This removes the need for a backend storage service.
     setTimeout(() => {
       const localImageUrl = URL.createObjectURL(file);
       setFormData(prev => ({ ...prev, partImage: localImageUrl }));
@@ -301,7 +342,6 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
         (treatmentToUpdate as any)[field] = value;
         
-        // When unit is changed to 'per_kg', set a default 'based_on'
         if (field === 'unit' && value === 'per_kg') {
           if (!treatmentToUpdate.based_on) {
             treatmentToUpdate.based_on = 'finished_weight';
@@ -384,6 +424,17 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       .join(' | ');
   };
 
+  const handleMarkupChange = (name: keyof Markups, value: string) => {
+    const percentage = parseFloat(value) || 0;
+    setFormData(prev => ({
+        ...prev,
+        markups: {
+            ...prev.markups,
+            [name]: percentage
+        }
+    }));
+  };
+
   // --- Submission ---
   const validateForm = () => { return true; };
   
@@ -397,24 +448,33 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   
   const handleSaveDraftClick = () => { onSaveDraft(formData); };
 
-  const selectedBilletShape = useMemo(() => BILLET_SHAPES.find(s => s.name === formData.billetShape), [formData.billetShape]);
   const selectedMaterial = useMemo(() => materials.find(m => m.id === formData.materialType), [materials, formData.materialType]);
   
-  const totalRawMaterialCostPerKg = useMemo(() => (formData.materialCostPerKg || 0) + (formData.transportCostPerKg || 0), [formData.materialCostPerKg, formData.transportCostPerKg]);
-  const rawMaterialCostPerPart = useMemo(() => formData.rawMaterialWeightKg * totalRawMaterialCostPerKg, [formData.rawMaterialWeightKg, totalRawMaterialCostPerKg]);
+  const { rawMaterialCostPerPart, machiningCostPerPart, surfaceTreatmentCostPerPart, totalCostPerPart } = useMemo(() => {
+    const results = calculateMachiningCosts(formData, machines, processes, tools);
+    return {
+      rawMaterialCostPerPart: results.rawMaterialPartCost,
+      machiningCostPerPart: formData.batchVolume > 0 ? results.machiningCost / formData.batchVolume : 0,
+      surfaceTreatmentCostPerPart: formData.batchVolume > 0 ? results.surfaceTreatmentCost / formData.batchVolume : 0,
+      totalCostPerPart: results.costPerPart,
+    };
+  }, [formData, machines, processes, tools]);
   
-  const surfaceTreatmentCostPerPart = useMemo(() => {
-    return formData.surfaceTreatments.reduce((total, treatment) => {
-        if (treatment.unit === 'per_kg') {
-            const weightToUse = treatment.based_on === 'raw_weight' ? formData.rawMaterialWeightKg : formData.finishedPartWeightKg;
-            return total + ((treatment.cost || 0) * weightToUse);
-        }
-        if (treatment.unit === 'per_area') {
-            return total + ((treatment.cost || 0) * formData.partSurfaceAreaM2);
-        }
-        return total;
-    }, 0);
-  }, [formData.surfaceTreatments, formData.rawMaterialWeightKg, formData.finishedPartWeightKg, formData.partSurfaceAreaM2]);
+  const markupValuesPerPart = useMemo(() => {
+    const baseCost1 = rawMaterialCostPerPart + machiningCostPerPart;
+    const baseCost2 = baseCost1 + surfaceTreatmentCostPerPart;
+    
+    return {
+        general: baseCost1 * ((formData.markups.general || 0) / 100),
+        admin: baseCost1 * ((formData.markups.admin || 0) / 100),
+        sales: baseCost1 * ((formData.markups.sales || 0) / 100),
+        miscellaneous: baseCost1 * ((formData.markups.miscellaneous || 0) / 100),
+        packing: baseCost2 * ((formData.markups.packing || 0) / 100),
+        transport: baseCost2 * ((formData.markups.transport || 0) / 100),
+        profit: baseCost2 * ((formData.markups.profit || 0) / 100),
+        duty: baseCost2 * ((formData.markups.duty || 0) / 100),
+    };
+  }, [rawMaterialCostPerPart, machiningCostPerPart, surfaceTreatmentCostPerPart, formData.markups]);
 
   const materialCategories = useMemo(() => Array.from(new Set(materials.map(m => m.category))).sort(), [materials]);
   const filteredMaterialGrades = useMemo(() => {
@@ -509,7 +569,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                             <Select label="Billet Shape" name="billetShape" value={formData.billetShape} onChange={handleBilletShapeChange}>
                                 {BILLET_SHAPES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                             </Select>
-                            {selectedBilletShape && selectedBilletShape.parameters.map(param => (
+                            {BILLET_SHAPES.find(s => s.name === formData.billetShape)?.parameters.map(param => (
                                 <Input 
                                     key={param.name}
                                     label={param.label}
@@ -538,14 +598,11 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 {/* Raw Material Cost */}
                 <Card>
                     <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Raw Material Cost</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
                         <DisplayField label="Selected Material" value={selectedMaterial?.name || 'N/A'} />
                         <DisplayField label="Density" value={formData.materialDensityGcm3} unit="g/cm³" />
-                        <DisplayField label="Material Cost" value={formData.materialCostPerKg} unit={`${currencySymbol}/kg`} />
+                        <Input label="Material Cost" name="materialCostPerKg" type="number" step="any" value={formData.materialCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
                         <Input label="Transport Cost" name="transportCostPerKg" type="number" step="any" value={formData.transportCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
-                        <DisplayField label="Total Raw Material Cost" value={totalRawMaterialCostPerKg.toFixed(2)} unit={`${currencySymbol}/kg`} />
-                        <DisplayField label="Raw Material Cost / Part" value={formatCurrency(rawMaterialCostPerPart)} />
-                        <DisplayField label="Surface Treatment Cost / Part" value={formatCurrency(surfaceTreatmentCostPerPart)} />
                     </div>
                 </Card>
 
@@ -680,14 +737,64 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                     <Button type="button" variant="secondary" onClick={addSurfaceTreatment} className="mt-4">+ Add Treatment</Button>
                 </Card>
 
-                {/* Labor & Overhead */}
+                 {/* Cost Summary */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Costing Parameters</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <Input label="Labor Rate" name="laborRatePerHour" type="number" step="any" value={formData.laborRatePerHour} onChange={handleInputChange} unit={`${currencySymbol}/hr`} />
-                        <Input label="Overhead Rate" name="overheadRatePercentage" type="number" step="any" value={formData.overheadRatePercentage} onChange={handleInputChange} unit="%" />
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Cost Summary (per Part)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                        <DisplayField label="Raw Material Cost" value={formatCurrency(rawMaterialCostPerPart)} />
+                        <DisplayField label="Machining Cost" value={formatCurrency(machiningCostPerPart)} />
+                        <DisplayField label="Surface Treatment Cost" value={formatCurrency(surfaceTreatmentCostPerPart)} />
                     </div>
                 </Card>
+                
+                {/* Markups */}
+                <Card>
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup</h2>
+                    <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                             <p className="md:col-span-2 text-sm text-text-muted">Applied to (Raw Material + Machining Cost)</p>
+                            <MarkupSlider label="General" name="general" value={formData.markups.general} onChange={handleMarkupChange} />
+                            <MarkupSlider label="Admin" name="admin" value={formData.markups.admin} onChange={handleMarkupChange} />
+                            <MarkupSlider label="Sales" name="sales" value={formData.markups.sales} onChange={handleMarkupChange} />
+                            <MarkupSlider label="Miscellaneous" name="miscellaneous" value={formData.markups.miscellaneous} onChange={handleMarkupChange} />
+                        </div>
+                        <div className="border-t border-border pt-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                            <p className="md:col-span-2 text-sm text-text-muted">Applied to (Raw Material + Machining + Surface Treatment)</p>
+                           <MarkupSlider label="Packing" name="packing" value={formData.markups.packing} onChange={handleMarkupChange} />
+                           <MarkupSlider label="Transport" name="transport" value={formData.markups.transport} onChange={handleMarkupChange} />
+                           <MarkupSlider label="Duty" name="duty" value={formData.markups.duty} onChange={handleMarkupChange} />
+                           <MarkupSlider label="Profit" name="profit" value={formData.markups.profit} onChange={handleMarkupChange} />
+                        </div>
+                    </div>
+                </Card>
+
+                {/* Markup Breakup */}
+                <Card>
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup Breakup (per Part)</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                        {Object.entries(markupValuesPerPart).map(([key, value]) => (
+                            <div key={key} className="flex justify-between items-center py-2 px-3 rounded-md bg-background/50">
+                                <span className="text-text-secondary">{markupLabels[key as keyof Markups]}</span>
+                                <div className="flex items-center space-x-3">
+                                    <span className="font-semibold text-text-secondary w-12 text-right">{formData.markups[key as keyof Markups]}%</span>
+                                    <span className="font-semibold text-text-primary w-24 text-right">{formatCurrency(value)}</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+                
+                {/* Final Part Cost */}
+                <Card className="!p-0 overflow-hidden">
+                    <div className="p-6 text-center">
+                        <h3 className="text-xl font-bold text-primary">Final Part Cost</h3>
+                    </div>
+                    <div className="bg-primary/10 p-6 text-center border-t-2 border-primary">
+                        <span className="text-4xl font-black text-primary">{formatCurrency(totalCostPerPart)}</span>
+                        <span className="text-lg ml-2 text-text-secondary">/ Part</span>
+                    </div>
+                </Card>
+
 
                 {/* Actions */}
                 <div className="flex justify-end items-center space-x-4 pt-6 border-t border-border">

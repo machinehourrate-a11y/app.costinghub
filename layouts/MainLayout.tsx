@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, View, Calculation } from '../types';
 import { Sidebar } from '../components/Sidebar';
@@ -29,6 +30,7 @@ const viewTitles: { [key in View]: string } = {
     superadmin: 'Super Admin Panel',
     subscription: 'Subscription Plans',
     subscribersList: 'Subscribers List',
+    feedback: 'Feedback & Requests',
 };
 
 

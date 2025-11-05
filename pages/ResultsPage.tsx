@@ -1,5 +1,6 @@
 
 
+
 import React from 'react';
 import type { ResultsPageProps } from '../types';
 import { Card } from '../components/ui/Card';
@@ -40,7 +41,11 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
              </div>
         </div>
         <Card>
-            <ResultsDisplay results={calculation.results} currency={currency} />
+            <ResultsDisplay 
+              results={calculation.results} 
+              currency={currency} 
+              markups={calculation.inputs.markups}
+            />
         </Card>
     </div>
   );

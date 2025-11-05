@@ -19,7 +19,8 @@ import { PublicLayout } from './layouts/PublicLayout';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { LandingPage } from './pages/LandingPage';
-import type { User, Calculation, MaterialMasterItem, MachiningInput, Machine, Process, SubscriptionPlan, View, Tool, SubscriberInfo } from './types';
+import { FeedbackPage } from './pages/FeedbackPage';
+import type { User, Calculation, MaterialMasterItem, MachiningInput, Machine, Process, SubscriptionPlan, View, Tool, SubscriberInfo, Feedback } from './types';
 import { SUPER_ADMIN_EMAILS, DEFAULT_PROCESSES, INITIAL_MATERIALS_MASTER, DEFAULT_MACHINES_MASTER, DEFAULT_TOOLS_MASTER, DEFAULT_CALCULATIONS_SHOWCASE } from './constants';
 import { SubscriptionUpgradeModal } from './components/SubscriptionUpgradeModal';
 
@@ -451,6 +452,29 @@ const App: React.FC = () => {
     setCurrentView('calculations');
   };
 
+  const handleFeedbackSubmit = useCallback(async (feedbackData: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => {
+    if (!user) {
+      throw new Error("You must be logged in to submit feedback.");
+    }
+    setError(null);
+
+    const feedbackToInsert = {
+      ...feedbackData,
+      user_id: user.id,
+      user_email: user.email,
+    };
+    
+    // In a real app, you'd check if a 'feedback' table exists in types/supabase.ts
+    // For now, we cast to 'any' to bypass strict checks for this new, untyped table.
+    const { error: insertError } = await supabase.from('feedback' as any).insert(feedbackToInsert);
+
+    if (insertError) {
+      const errorMessage = `Failed to submit feedback: ${insertError.message}`;
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }, [user]);
+
   const handleNavigate = (view: View) => {
     if (view === 'calculator') setEditingCalculation(null);
     setCurrentView(view);
@@ -493,6 +517,8 @@ const App: React.FC = () => {
         return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
       case 'subscription':
         return <SubscriptionPage plans={plans} user={user} isSuperAdmin={isSuperAdmin} onUpgradePlan={handleUpgradePlan} />;
+      case 'feedback':
+        return <FeedbackPage user={user} onSubmit={handleFeedbackSubmit} />;
       case 'superadmin':
         return isSuperAdmin ? <SuperAdminPage plans={plans} onAddPlan={handleAddPlan} onUpdatePlan={handleUpdatePlan} onDeletePlan={handleDeletePlan} /> : <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigate} onEdit={handleEdit} onDelete={handleDeleteCalculation} onViewResults={handleViewResults} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
       case 'subscribersList':
