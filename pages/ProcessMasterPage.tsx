@@ -1,63 +1,38 @@
+
 import React, { useState, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import type { Process, ProcessParameter } from '../types';
+import type { Process, ProcessLibraryPageProps, ProcessParameter } from '../types';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { MACHINE_TYPES } from '../constants';
-
-interface ProcessLibraryPageProps {
-  processes: Process[];
-}
-
-interface RequestProcessModalProps {
-  onClose: () => void;
-}
+import { MACHINE_TYPES, DEFAULT_PROCESS_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ProcessModal } from '../components/ProcessModal';
+import { MultiProcessModal } from '../components/MultiProcessModal';
+import { RequestProcessModal } from '../components/RequestProcessModal';
 
 const ITEMS_PER_PAGE = 10;
 
-const RequestProcessModal: React.FC<RequestProcessModalProps> = ({ onClose }) => {
-    const [requestDetails, setRequestDetails] = useState('');
-    const recipient = 'support@costinghub.com';
-    const subject = 'New Process Request';
-    const mailtoLink = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(requestDetails)}`;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">
-            <Card className="max-w-xl w-full relative">
-                 <button onClick={onClose} className="absolute top-4 right-4 text-text-muted hover:text-text-primary">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-                <h2 className="text-2xl font-bold text-primary mb-4">Request a New Process</h2>
-                <p className="text-text-secondary mb-6">
-                    Need a process that isn't on our list? Describe it below. Please include the process name, typical parameters you use for calculation, and any relevant formulas. Your request will be reviewed for inclusion in a future update.
-                </p>
-                <textarea
-                    value={requestDetails}
-                    onChange={(e) => setRequestDetails(e.target.value)}
-                    placeholder="e.g., Process Name: Cylindrical Grinding. Parameters: Diameter, Length, Stock to Remove, Surface Finish. Formula: ..."
-                    className="block w-full px-3 py-2 border rounded-md focus:outline-none sm:text-sm bg-background/50 text-text-input border-border placeholder-text-muted focus:ring-primary focus:border-primary"
-                    rows={6}
-                />
-                <div className="flex justify-end space-x-4 mt-6">
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <a href={mailtoLink} target="_blank" rel="noopener noreferrer">
-                        <Button>Send Request via Email</Button>
-                    </a>
-                </div>
-            </Card>
-        </div>
-    );
-};
-
-
-export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processes }) => {
+export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ 
+    processes, user, onAddProcess, onUpdateProcess, onDeleteProcess, onAddMultipleProcesses, onDeleteMultipleProcesses
+}) => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+  const [editingProcess, setEditingProcess] = useState<Process | null>(null);
+  const [processToDelete, setProcessToDelete] = useState<Process | null>(null);
 
   // Filters and pagination state
   const [searchTerm, setSearchTerm] = useState('');
   const [machineTypeFilter, setMachineTypeFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // State for bulk delete
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+
+  const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
 
   // Memoized filtering logic
   const filteredProcesses = useMemo(() => {
@@ -71,6 +46,39 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processe
 
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(filteredProcesses[0] || processes[0] || null);
 
+  const handleAddNew = () => {
+    setEditingProcess(null);
+    setIsModalOpen(true);
+  };
+  
+  const handleEdit = (process: Process) => {
+    setEditingProcess(process);
+    setIsModalOpen(true);
+  };
+  
+  const handleSaveProcess = (process: Process) => {
+    if (editingProcess) {
+      onUpdateProcess(process);
+    } else {
+      onAddProcess(process);
+    }
+    setIsModalOpen(false);
+  };
+  
+  const handleDelete = (process: Process) => {
+    setProcessToDelete(process);
+  };
+
+  const confirmDelete = () => {
+    if (processToDelete) {
+        onDeleteProcess(processToDelete.id);
+        if (selectedProcess?.id === processToDelete.id) {
+            setSelectedProcess(null);
+        }
+        setProcessToDelete(null);
+    }
+  };
+
   const resetFilters = () => {
     setSearchTerm('');
     setMachineTypeFilter('All');
@@ -81,6 +89,37 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processe
     setter(value);
     setCurrentPage(1);
   };
+  
+    // --- Bulk Delete Handlers ---
+    const handleToggleSelectionMode = () => {
+        setIsSelectionMode(prev => !prev);
+        setSelectedIds([]);
+    };
+
+    const handleToggleSelection = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+    
+    const handleToggleSelectAll = () => {
+        const selectableIds = paginatedProcesses
+            .filter(p => isSuperAdmin && !DEFAULT_PROCESS_IDS.has(p.id))
+            .map(p => p.id);
+            
+        if (selectedIds.length === selectableIds.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(selectableIds);
+        }
+    };
+    
+    const confirmBulkDelete = () => {
+        onDeleteMultipleProcesses(selectedIds);
+        setIsBulkDeleteModalOpen(false);
+        setSelectedIds([]);
+        setIsSelectionMode(false);
+    };
 
   // Pagination logic
   const totalPages = Math.ceil(filteredProcesses.length / ITEMS_PER_PAGE);
@@ -91,20 +130,58 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processe
 
   return (
     <div className="w-full mx-auto space-y-8 animate-fade-in">
-      {isRequestModalOpen && <RequestProcessModal onClose={() => setIsRequestModalOpen(false)} />}
+      {isModalOpen && <ProcessModal process={editingProcess} onSave={handleSaveProcess} onClose={() => setIsModalOpen(false)} />}
+      {isMultiModalOpen && <MultiProcessModal onSave={(newProcs) => { onAddMultipleProcesses(newProcs); setIsMultiModalOpen(false); }} onClose={() => setIsMultiModalOpen(false)} />}
+      {processToDelete && (
+        <ConfirmationModal
+          title="Delete Process"
+          message={`Are you sure you want to delete "${processToDelete.name}"? This action cannot be undone.`}
+          onConfirm={confirmDelete}
+          onCancel={() => setProcessToDelete(null)}
+        />
+      )}
+      {isRequestModalOpen && (
+        <RequestProcessModal
+            onClose={() => setIsRequestModalOpen(false)}
+            onSubmitRequest={(details) => {
+                alert(`Your request has been submitted:\n\n"${details}"\n\nOur team will review it shortly.`);
+                setIsRequestModalOpen(false);
+            }}
+        />
+      )}
+      {isBulkDeleteModalOpen && (
+          <ConfirmationModal
+            title={`Delete ${selectedIds.length} Processes`}
+            message={`Are you sure you want to delete the selected custom processes? This action cannot be undone.`}
+            onConfirm={confirmBulkDelete}
+            onCancel={() => setIsBulkDeleteModalOpen(false)}
+          />
+      )}
       
       <Card>
-        <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
-          <h2 className="text-2xl font-bold text-primary">Process Library</h2>
-          <Button onClick={() => setIsRequestModalOpen(true)}>+ Request New Process</Button>
-        </div>
-        
-        {/* Filter Section */}
-        <div className="p-4 bg-background/50 rounded-lg border border-border mb-6">
+        <div className="border-b border-border pb-4 mb-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-primary">Process Library</h2>
+              <div className="flex items-center space-x-4">
+                 {isSuperAdmin ? (
+                    <>
+                        <Button variant="secondary" onClick={handleToggleSelectionMode}>
+                          {isSelectionMode ? 'Cancel' : 'Select'}
+                        </Button>
+                        <Button onClick={handleAddNew}>+ Add New Process</Button>
+                        <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
+                    </>
+                ) : (
+                    <Button onClick={() => setIsRequestModalOpen(true)}>+ Request New Process</Button>
+                )}
+              </div>
+            </div>
+            
+            {/* Filter Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                 <Input
                     label="Search Process Name"
-                    placeholder="e.g., End Milling"
+                    placeholder="e.g., Face Milling"
                     value={searchTerm}
                     onChange={(e) => handleFilterChange(setSearchTerm, e.target.value)}
                 />
@@ -120,23 +197,73 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processe
             </div>
         </div>
 
+        {isSelectionMode && isSuperAdmin && (
+            <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg mb-4 border border-primary/20">
+                <span className="font-semibold text-primary">{selectedIds.length} item(s) selected</span>
+                <div>
+                    <Button 
+                        variant="secondary" 
+                        className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                        onClick={() => setIsBulkDeleteModalOpen(true)}
+                        disabled={selectedIds.length === 0}
+                    >
+                        Delete Selected
+                    </Button>
+                </div>
+            </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-border">
             <thead className="bg-background/50">
               <tr>
+                 {isSelectionMode && isSuperAdmin && (
+                    <th scope="col" className="px-4 py-3 w-12">
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
+                            checked={paginatedProcesses.length > 0 && selectedIds.length === paginatedProcesses.filter(p => isSuperAdmin && !DEFAULT_PROCESS_IDS.has(p.id)).length}
+                            onChange={handleToggleSelectAll}
+                        />
+                    </th>
+                )}
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Process Name</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Group</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Compatible Machine Types</th>
+                <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="bg-surface divide-y divide-border">
-              {paginatedProcesses.length > 0 ? paginatedProcesses.map((process) => (
+              {paginatedProcesses.length > 0 ? paginatedProcesses.map((process) => {
+                const isDefault = DEFAULT_PROCESS_IDS.has(process.id);
+                const canModify = isSuperAdmin && !isDefault;
+                return (
                 <tr 
                   key={process.id} 
-                  className={`cursor-pointer ${selectedProcess?.id === process.id ? 'bg-primary/10' : 'hover:bg-background/60'}`}
-                  onClick={() => setSelectedProcess(process)}
+                  className={`cursor-pointer ${selectedProcess?.id === process.id && !isSelectionMode ? 'bg-primary/10' : 'hover:bg-background/60'} ${selectedIds.includes(process.id) ? '!bg-primary/20' : ''}`}
+                  onClick={() => {
+                      if (isSelectionMode && canModify) {
+                          handleToggleSelection(process.id);
+                      } else if (!isSelectionMode) {
+                          setSelectedProcess(process);
+                      }
+                  }}
                 >
-                  <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">{process.name}</td>
+                  {isSelectionMode && isSuperAdmin && (
+                      <td className="px-4 py-4">
+                          <input
+                              type="checkbox"
+                              checked={selectedIds.includes(process.id)}
+                              onChange={() => handleToggleSelection(process.id)}
+                              disabled={!canModify}
+                              className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                          />
+                      </td>
+                  )}
+                  <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">
+                      {process.name}
+                      {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{process.group}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
                     <div className="flex flex-wrap gap-1 max-w-md">
@@ -145,10 +272,18 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({ processe
                         )) : <span className="text-xs text-text-muted">None</span>}
                     </div>
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                    {isSuperAdmin && (
+                      <>
+                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(process); }} disabled={!canModify} title={!canModify ? "Default processes cannot be modified." : ""}>Edit</Button>
+                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(process); }} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} disabled={!canModify} title={!canModify ? "Default processes cannot be deleted." : ""}>Delete</Button>
+                      </>
+                    )}
+                  </td>
                 </tr>
-              )) : (
+              )}) : (
                  <tr>
-                    <td colSpan={3} className="text-center py-10 text-text-secondary">
+                    <td colSpan={isSelectionMode ? 5 : 4} className="text-center py-10 text-text-secondary">
                         No processes found matching your criteria.
                     </td>
                 </tr>

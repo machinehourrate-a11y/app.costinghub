@@ -122,29 +122,29 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'faceWidth', label: 'Face Width (W)', unit: 'mm' },
         { name: 'depthOfCut', label: 'Depth of Cut (ap)', unit: 'mm' },
         { name: 'radialEngagement', label: 'Radial Engagement (ae)', unit: 'mm' },
-    ], formula: '(Math.ceil(faceWidth / (radialEngagement || toolDiameter * 0.75)) * (faceLength + toolDiameter)) / feedRate' },
+    ], formula: '(Math.ceil(faceWidth / ((radialEngagement || toolDiameter * 0.75) || 1)) * (faceLength + toolDiameter)) / feedRate' },
     { id: 'proc_cncmill_002', name: 'Peripheral Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'edgeLength', label: 'Edge Length', unit: 'mm' },
         { name: 'totalDepth', label: 'Total Depth (t)', unit: 'mm' },
         { name: 'depthPerPass', label: 'Depth per Pass (ap)', unit: 'mm' },
-    ], formula: '((edgeLength + toolDiameter) * Math.ceil(totalDepth / depthPerPass)) / feedRate' },
+    ], formula: '((edgeLength + toolDiameter) * Math.ceil(totalDepth / (depthPerPass || 1))) / feedRate' },
     { id: 'proc_cncmill_003', name: 'Slot Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'slotLength', label: 'Slot Length', unit: 'mm' },
         { name: 'slotDepth', label: 'Slot Depth (t)', unit: 'mm' },
         { name: 'depthPerPass', label: 'Depth per Pass (ap)', unit: 'mm' },
-    ], formula: '((slotLength + toolDiameter) * Math.ceil(slotDepth / depthPerPass)) / feedRate' },
+    ], formula: '((slotLength + toolDiameter) * Math.ceil(slotDepth / (depthPerPass || 1))) / feedRate' },
     { id: 'proc_cncmill_004', name: 'Pocketing (MRR)', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'pocketLength', label: 'Pocket Length', unit: 'mm' },
         { name: 'pocketWidth', label: 'Pocket Width', unit: 'mm' },
         { name: 'pocketDepth', label: 'Pocket Depth', unit: 'mm' },
         { name: 'radialEngagement', label: 'Radial Engagement (ae)', unit: 'mm' },
         { name: 'axialEngagement', label: 'Axial Engagement (ap)', unit: 'mm' },
-    ], formula: '((pocketLength * pocketWidth * pocketDepth) / (axialEngagement * radialEngagement * feedRate))' },
+    ], formula: '(axialEngagement > 0 && radialEngagement > 0 && feedRate > 0 ? (pocketLength * pocketWidth * pocketDepth) / (axialEngagement * radialEngagement * feedRate) : 0)' },
     { id: 'proc_cncmill_005', name: 'Profiling / Contouring', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'perimeter', label: 'Perimeter (P)', unit: 'mm' },
         { name: 'totalDepth', label: 'Total Depth (t)', unit: 'mm' },
         { name: 'depthPerPass', label: 'Depth per Pass (ap)', unit: 'mm' },
-    ], formula: '((perimeter + toolDiameter) * Math.ceil(totalDepth / depthPerPass)) / feedRate' },
+    ], formula: '((perimeter + toolDiameter) * Math.ceil(totalDepth / (depthPerPass || 1))) / feedRate' },
     { id: 'proc_cncmill_006', name: 'Chamfer Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'edgeLength', label: 'Edge Length', unit: 'mm' },
     ], formula: '((edgeLength + toolDiameter) / feedRate)' },
@@ -158,19 +158,19 @@ export const DEFAULT_PROCESSES: Process[] = [
     { id: 'proc_cncmill_013', name: '3D Surfacing (Scallop)', group: '3D Milling', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'surfaceArea', label: 'Surface Area to Finish', unit: 'mm²' },
         { name: 'stepover', label: 'Stepover (ae)', unit: 'mm' },
-    ], formula: '((surfaceArea / stepover) / feedRate)' },
+    ], formula: '((surfaceArea / (stepover || 1)) / feedRate)' },
 
     // --- HOLE MAKING (Mill & Lathe) ---
     { id: 'proc_hole_001', name: 'Helical Interpolation (Bore)', group: 'Hole Making', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'boreDepth', label: 'Bore Depth (t)', unit: 'mm' },
         { name: 'boreDiameter', label: 'Bore Diameter (D_path)', unit: 'mm' },
         { name: 'pitch', label: 'Pitch per Revolution (p/ap)', unit: 'mm' },
-    ], formula: '(Math.ceil(boreDepth / pitch) * Math.sqrt(Math.pow(Math.PI * (boreDiameter - toolDiameter), 2) + Math.pow(pitch, 2))) / feedRate' },
+    ], formula: '(pitch > 0 ? (Math.ceil(boreDepth / pitch) * Math.sqrt(Math.pow(Math.PI * (boreDiameter - toolDiameter), 2) + Math.pow(pitch, 2))) / feedRate : 0)' },
     { id: 'proc_hole_002', name: 'Thread Milling', group: 'Hole Making', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'threadDepth', label: 'Thread Depth', unit: 'mm' },
         { name: 'meanDiameter', label: 'Mean Thread Diameter', unit: 'mm' },
         { name: 'pitch', label: 'Thread Pitch', unit: 'mm' },
-    ], formula: '((Math.PI * meanDiameter * (threadDepth / pitch)) / feedRate)' },
+    ], formula: '(pitch > 0 ? (Math.PI * meanDiameter * (threadDepth / pitch)) / feedRate : 0)' },
     { id: 'proc_hole_003', name: 'Drilling (on Mill)', group: 'Hole Making', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'holeDepth', label: 'Hole Depth', unit: 'mm' },
         { name: 'allowance', label: 'Allowance (for approach)', unit: 'mm' },
@@ -188,7 +188,7 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'diameterEnd', label: 'End Diameter', unit: 'mm' },
         { name: 'depthPerPass', label: 'Depth per Pass (ap)', unit: 'mm' },
         { name: 'feedPerRev', label: 'Feed per Revolution', unit: 'mm/rev' },
-    ], formula: '(turningLength / feedRate) * Math.ceil(Math.abs(diameterStart - diameterEnd) / 2 / depthPerPass)' },
+    ], formula: '(depthPerPass > 0 ? (turningLength / feedRate) * Math.ceil(Math.abs(diameterStart - diameterEnd) / 2 / depthPerPass) : 0)' },
     { id: 'proc_cnclathe_002', name: 'Facing', group: 'Turning', compatibleMachineTypes: ['CNC Lathe'], parameters: [
         { name: 'facingDiameter', label: 'Facing Diameter', unit: 'mm' },
         { name: 'feedPerRev', label: 'Feed per Revolution', unit: 'mm/rev' },
@@ -205,7 +205,7 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'threadLength', label: 'Thread Length', unit: 'mm' },
         { name: 'pitch', label: 'Thread Pitch', unit: 'mm' },
         { name: 'numberOfPasses', label: 'Number of Passes', unit: 'count' },
-    ], formula: '(threadLength / (pitch * spindleSpeed)) * numberOfPasses' },
+    ], formula: '((pitch * spindleSpeed) > 0 ? (threadLength / (pitch * spindleSpeed)) * numberOfPasses : 0)' },
     { id: 'proc_cnclathe_006', name: 'Drilling (on Lathe)', group: 'Turning', compatibleMachineTypes: ['CNC Lathe'], parameters: [
         { name: 'holeDepth', label: 'Hole Depth', unit: 'mm' },
         { name: 'allowance', label: 'Allowance (for approach)', unit: 'mm' },
@@ -228,9 +228,9 @@ export const DEFAULT_PROCESSES: Process[] = [
     ], formula: `(function() {
         const effectiveWheelWidth = toolDiameter || 1;
         const crossfeedStepFx = effectiveWheelWidth * (1 - overlapRatioU);
-        const crossfeedPassesNx = Math.ceil((widthW - effectiveWheelWidth) / crossfeedStepFx) + 1;
-        const depthPassesNz = Math.ceil(stockToRemoveSr / depthOfCutAp);
-        const timePerDoubleStrokeTds = (lengthL + allowance) / tableSpeedVw;
+        const crossfeedPassesNx = Math.ceil((widthW - effectiveWheelWidth) / (crossfeedStepFx || 1)) + 1;
+        const depthPassesNz = depthOfCutAp > 0 ? Math.ceil(stockToRemoveSr / depthOfCutAp) : 0;
+        const timePerDoubleStrokeTds = (tableSpeedVw > 0 ? (lengthL + allowance) / tableSpeedVw : 0);
         const cuttingTime = depthPassesNz * crossfeedPassesNx * timePerDoubleStrokeTds;
         const sparkOutTime = sparkOutStrokesNso * timePerDoubleStrokeTds;
         const dressingTimePerPart = partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0;
@@ -245,7 +245,7 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'handlingTime', label: 'Handling Time', unit: 'min' },
         { name: 'dressingTime', label: 'Dressing Time', unit: 'min' },
         { name: 'partsBetweenDress', label: 'Parts Between Dress', unit: 'count' },
-    ], formula: '((lengthL + allowance) / tableSpeedVw) + sparkOutTime + (dressingTime / partsBetweenDress) + handlingTime' },
+    ], formula: '(tableSpeedVw > 0 ? (lengthL + allowance) / tableSpeedVw : 0) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
     { id: 'proc_grind_003', name: 'Cylindrical Grinding (Traverse)', group: 'Grinding', compatibleMachineTypes: ['Grinder', 'CNC Lathe'], parameters: [
         { name: 'groundLengthL', label: 'Ground Length', unit: 'mm' },
         { name: 'stockToRemoveSr', label: 'Radial Stock to Remove', unit: 'mm' },
@@ -260,9 +260,9 @@ export const DEFAULT_PROCESSES: Process[] = [
     ], formula: `(function() {
         const effectiveWheelWidth = toolDiameter || 1;
         const crossfeedStepFx = effectiveWheelWidth * (1 - overlapRatioU);
-        const axialPassesNx = Math.ceil((groundLengthL - effectiveWheelWidth) / crossfeedStepFx) + 1;
-        const depthPassesNz = Math.ceil(stockToRemoveSr / depthOfCutAp);
-        const timePerDoubleStrokeTds = (groundLengthL + allowance) / tableSpeedVw;
+        const axialPassesNx = Math.ceil((groundLengthL - effectiveWheelWidth) / (crossfeedStepFx || 1)) + 1;
+        const depthPassesNz = depthOfCutAp > 0 ? Math.ceil(stockToRemoveSr / depthOfCutAp) : 0;
+        const timePerDoubleStrokeTds = (tableSpeedVw > 0 ? (groundLengthL + allowance) / tableSpeedVw : 0);
         const cuttingTime = depthPassesNz * axialPassesNx * timePerDoubleStrokeTds;
         const sparkOutTime = sparkOutStrokesNso * timePerDoubleStrokeTds;
         const dressingTimePerPart = partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0;
@@ -275,7 +275,7 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'handlingTime', label: 'Handling Time', unit: 'min' },
         { name: 'dressingTime', label: 'Dressing Time', unit: 'min' },
         { name: 'partsBetweenDress', label: 'Parts Between Dress', unit: 'count' },
-    ], formula: '(stockToRemoveSr / infeedRateRin) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
+    ], formula: '(infeedRateRin > 0 ? stockToRemoveSr / infeedRateRin : 0) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
     { id: 'proc_grind_005', name: 'Centerless Grinding (Through-Feed)', group: 'Grinding', compatibleMachineTypes: ['Grinder'], parameters: [
         { name: 'partLengthLp', label: 'Part Length', unit: 'mm' },
         { name: 'axialFeedSpeedVax', label: 'Axial Feed Speed (v_ax)', unit: 'mm/min' },
@@ -284,7 +284,7 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'handlingTime', label: 'Handling Time', unit: 'min' },
         { name: 'dressingTime', label: 'Dressing Time', unit: 'min' },
         { name: 'partsBetweenDress', label: 'Parts Between Dress', unit: 'count' },
-    ], formula: '((partLengthLp + allowance) / axialFeedSpeedVax) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
+    ], formula: '(axialFeedSpeedVax > 0 ? (partLengthLp + allowance) / axialFeedSpeedVax : 0) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
      { id: 'proc_grind_006', name: 'Centerless Grinding (Infeed)', group: 'Grinding', compatibleMachineTypes: ['Grinder'], parameters: [
         { name: 'stockToRemoveSr', label: 'Radial Stock to Remove', unit: 'mm' },
         { name: 'infeedRateRin', label: 'Infeed Rate (rin)', unit: 'mm/min' },
@@ -292,14 +292,14 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'handlingTime', label: 'Handling Time', unit: 'min' },
         { name: 'dressingTime', label: 'Dressing Time', unit: 'min' },
         { name: 'partsBetweenDress', label: 'Parts Between Dress', unit: 'count' },
-    ], formula: '(stockToRemoveSr / infeedRateRin) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
+    ], formula: '(infeedRateRin > 0 ? stockToRemoveSr / infeedRateRin : 0) + sparkOutTime + (partsBetweenDress > 0 ? dressingTime / partsBetweenDress : 0) + handlingTime' },
     { id: 'proc_grind_007', name: 'Thread Grinding', group: 'Grinding', compatibleMachineTypes: ['Grinder'], parameters: [
         { name: 'threadLengthLt', label: 'Thread Length', unit: 'mm' },
         { name: 'pitchP', label: 'Pitch', unit: 'mm' },
         { name: 'numberOfPassesNp', label: 'Number of Passes', unit: 'count' },
         { name: 'allowance', label: 'Approach/Exit Allowance', unit: 'mm' },
         { name: 'sparkOutTime', label: 'Spark-out Time', unit: 'min' },
-    ], formula: '(numberOfPassesNp * ((threadLengthLt + allowance) / (pitchP * spindleSpeed))) + sparkOutTime' },
+    ], formula: '((pitchP * spindleSpeed) > 0 ? (numberOfPassesNp * ((threadLengthLt + allowance) / (pitchP * spindleSpeed))) + sparkOutTime : 0)' },
 
     // --- GEAR CUTTING ---
     { id: 'proc_gear_001', name: 'Gear Hobbing', group: 'Gear Cutting', compatibleMachineTypes: ['Gear Cutter'], parameters: [
@@ -307,13 +307,13 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'feedPerRevFa', label: 'Feed per Rev (fa)', unit: 'mm/rev' },
         { name: 'allowance', label: 'Approach/Exit Allowance', unit: 'mm' },
         { name: 'numberOfPasses', label: 'Number of Passes', unit: 'count' },
-    ], formula: '(numberOfPasses * (faceWidthB + allowance)) / (feedPerRevFa * spindleSpeed)' },
+    ], formula: '((feedPerRevFa * spindleSpeed) > 0 ? (numberOfPasses * (faceWidthB + allowance)) / (feedPerRevFa * spindleSpeed) : 0)' },
     { id: 'proc_gear_002', name: 'Gear Shaping', group: 'Gear Cutting', compatibleMachineTypes: ['Gear Cutter'], parameters: [
         { name: 'faceWidthB', label: 'Face Width', unit: 'mm' },
         { name: 'feedPerStrokeFs', label: 'Feed per Stroke (fs)', unit: 'mm/stroke' },
         { name: 'strokesPerMinuteNs', label: 'Strokes per Minute', unit: 'strokes/min' },
         { name: 'numberOfPasses', label: 'Number of Passes', unit: 'count' },
-    ], formula: '(numberOfPasses * faceWidthB) / (feedPerStrokeFs * strokesPerMinuteNs)' },
+    ], formula: '((feedPerStrokeFs * strokesPerMinuteNs) > 0 ? (numberOfPasses * faceWidthB) / (feedPerStrokeFs * strokesPerMinuteNs) : 0)' },
     { id: 'proc_gear_003', name: 'Gear Milling (Form Cutter)', group: 'Gear Cutting', compatibleMachineTypes: ['CNC Mill'], parameters: [
         { name: 'numberOfTeethZ', label: 'Number of Teeth (z)', unit: 'count' },
         { name: 'totalToothDepthH', label: 'Total Tooth Depth (h)', unit: 'mm' },
@@ -321,23 +321,23 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'numberOfPasses', label: 'Passes per Tooth', unit: 'count' },
         { name: 'allowance', label: 'Approach/Exit Allowance', unit: 'mm' },
         { name: 'indexingTimePerTooth', label: 'Indexing Time per Tooth', unit: 'min' },
-    ], formula: '(numberOfTeethZ * numberOfPasses * ((totalToothDepthH + allowance) / (feedPerRevFn * spindleSpeed))) + (numberOfTeethZ * indexingTimePerTooth)' },
+    ], formula: '((feedPerRevFn * spindleSpeed) > 0 ? (numberOfTeethZ * numberOfPasses * ((totalToothDepthH + allowance) / (feedPerRevFn * spindleSpeed))) + (numberOfTeethZ * indexingTimePerTooth) : (numberOfTeethZ * indexingTimePerTooth))' },
     { id: 'proc_gear_004', name: 'Internal Gear Broaching', group: 'Gear Cutting', compatibleMachineTypes: ['Gear Cutter'], parameters: [
         { name: 'strokeLengthS', label: 'Stroke Length', unit: 'mm' },
         { name: 'strokeSpeedVs', label: 'Stroke Speed (vs)', unit: 'mm/min' },
         { name: 'returnSpeedVr', label: 'Return Speed (vr)', unit: 'mm/min' },
-    ], formula: '(strokeLengthS / strokeSpeedVs) + (strokeLengthS / returnSpeedVr)' },
+    ], formula: '(strokeSpeedVs > 0 ? strokeLengthS / strokeSpeedVs : 0) + (returnSpeedVr > 0 ? strokeLengthS / returnSpeedVr : 0)' },
     { id: 'proc_gear_005', name: 'Gear Grinding (Form)', group: 'Gear Cutting', compatibleMachineTypes: ['Grinder', 'Gear Cutter'], parameters: [
         { name: 'totalToothDepthH', label: 'Total Stock to Remove', unit: 'mm' },
         { name: 'radialInfeedRateRin', label: 'Radial Infeed Rate', unit: 'mm/min' },
         { name: 'numberOfPasses', label: 'Number of Passes', unit: 'count' },
         { name: 'sparkOutTime', label: 'Spark-out Time', unit: 'min' },
-    ], formula: '((totalToothDepthH / radialInfeedRateRin) * numberOfPasses) + sparkOutTime' },
+    ], formula: '(radialInfeedRateRin > 0 ? (totalToothDepthH / radialInfeedRateRin) * numberOfPasses : 0) + sparkOutTime' },
     { id: 'proc_gear_006', name: 'Gear Shaving (Finishing)', group: 'Gear Cutting', compatibleMachineTypes: ['Gear Cutter'], parameters: [
         { name: 'faceWidthB', label: 'Face Width', unit: 'mm' },
         { name: 'axialFeedFa', label: 'Axial Feed per Rev (fa)', unit: 'mm/rev' },
         { name: 'numberOfStrokesNs', label: 'Number of Strokes', unit: 'count' },
-    ], formula: '((faceWidthB / (axialFeedFa * spindleSpeed)) * numberOfStrokesNs)' },
+    ], formula: '((axialFeedFa * spindleSpeed) > 0 ? ((faceWidthB / (axialFeedFa * spindleSpeed)) * numberOfStrokesNs) : 0)' },
 
     // --- SAWING ---
     { id: 'proc_saw_001', name: 'Band Saw Cut-Off', group: 'Sawing', compatibleMachineTypes: ['Saw'], parameters: [
@@ -353,8 +353,9 @@ export const DEFAULT_PROCESSES: Process[] = [
         { name: 'cutThickness', label: 'Cut Thickness', unit: 'mm' },
         { name: 'feedRate', label: 'Feed Rate', unit: 'mm/min' },
         { name: 'allowance', label: 'Approach/Exit Allowance', unit: 'mm' },
-    ], formula: '(cutThickness + allowance) / feedRate' },
+    ], formula: '(feedRate > 0 ? (cutThickness + allowance) / feedRate : 0)' },
 ] as any;
+export const DEFAULT_PROCESS_IDS = new Set(DEFAULT_PROCESSES.map(p => p.id));
 
 
 export const TOOL_TYPES = ['End Mill', 'Face Mill', 'Drill', 'Tap', 'Lathe Insert', 'Grooving Tool', 'Grinding Wheel', 'Hob Cutter', 'Shaper Cutter', 'Gear Form Cutter', 'Broach', 'Band Saw Blade', 'Circular Saw Blade'];
@@ -455,10 +456,10 @@ const CNC_MILL_SHOWCASE: Calculation = {
   id: 'calc_master_mill_v1',
   inputs: {
     id: 'inputs_master_mill', calculationNumber: 'TPL-MILL-01', partNumber: 'HSG-01', partName: 'CNC Mill Showcase', revision: 'A',
-    createdAt: new Date().toISOString(), annualVolume: 5000, batchVolume: 200, unitSystem: 'Metric', materialType: 'mat_011',
+    createdAt: new Date().toISOString(), annualVolume: 5000, batchVolume: 200, unitSystem: 'Metric', materialCategory: 'N - Non-ferrous', materialType: 'mat_011',
     rawMaterialProcess: 'Billet', billetShape: 'Block', billetShapeParameters: { length: 120, width: 80, height: 40 },
-    rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, materialCostPerKg: 4, materialDensityGcm3: 2.7, transportCostPerKg: 0.3,
-    surfaceTreatmentName: 'Anodizing', surfaceTreatmentCostPerKg: 2, laborRatePerHour: 55, overheadRatePercentage: 150, setups: [{
+    rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, partSurfaceAreaM2: 0.05, materialCostPerKg: 4, materialDensityGcm3: 2.7, transportCostPerKg: 0.3,
+    surfaceTreatments: [{ id: 'st1', name: 'Anodizing', cost: 2, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 55, overheadRatePercentage: 150, setups: [{
       id: 'setup_mill_1', name: 'Milling Operations', machineId: 'mach_001', timePerSetupMin: 45, toolChangeTimeSec: 10, efficiency: 0.95,
       operations: [
         { id: 'op_m1', processName: 'Face Milling', toolId: 'tool_004', parameters: { faceLength: 120, faceWidth: 80, depthOfCut: 1, radialEngagement: 40 } },
@@ -467,7 +468,7 @@ const CNC_MILL_SHOWCASE: Calculation = {
       ]
     }]
   },
-  results: { rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, totalMaterialCostPerKg: 6.3, rawMaterialPartCost: 6.55, materialCost: 1310, operationTimeBreakdown: [{ processName: 'Face Milling', timeMin: 0.43, id: 'op_m1' }, { processName: 'Pocketing (MRR)', timeMin: 1.1, id: 'op_m2' }, { processName: 'Drilling (on Mill)', timeMin: 0.58, id: 'op_m3' }], totalCuttingTimeMin: 2.11, totalSetupTimeMin: 47.37, totalToolChangeTimeMin: 0.53, cycleTimePerPartMin: 0.25, totalMachineTimeHours: 0.83, machineCost: 62.5, laborCost: 45.88, overheadCost: 2127.56, totalCost: 3545.94, costPerPart: 17.73 },
+  results: { rawMaterialWeightKg: 1.04, finishedPartWeightKg: 0.75, totalMaterialCostPerKg: 4.3, rawMaterialPartCost: 4.47, materialCost: 894.4, surfaceTreatmentCost: 300, operationTimeBreakdown: [{ processName: 'Face Milling', timeMin: 0.43, id: 'op_m1' }, { processName: 'Pocketing (MRR)', timeMin: 1.1, id: 'op_m2' }, { processName: 'Drilling (on Mill)', timeMin: 0.58, id: 'op_m3' }], totalCuttingTimeMin: 2.11, totalSetupTimeMin: 47.37, totalToolChangeTimeMin: 0.53, cycleTimePerPartMin: 0.25, totalMachineTimeHours: 0.83, machineCost: 62.5, laborCost: 45.88, overheadCost: 2095.17, totalCost: 3397.95, costPerPart: 16.99 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -475,10 +476,10 @@ const CNC_LATHE_SHOWCASE: Calculation = {
   id: 'calc_master_lathe_v1',
   inputs: {
     id: 'inputs_master_lathe', calculationNumber: 'TPL-LATHE-01', partNumber: 'FLG-01', partName: 'CNC Lathe Showcase', revision: 'A',
-    createdAt: new Date().toISOString(), annualVolume: 10000, batchVolume: 500, unitSystem: 'Metric', materialType: 'mat_005',
+    createdAt: new Date().toISOString(), annualVolume: 10000, batchVolume: 500, unitSystem: 'Metric', materialCategory: 'M - Stainless Steel', materialType: 'mat_005',
     rawMaterialProcess: 'Billet', billetShape: 'Cylinder', billetShapeParameters: { diameter: 80, height: 40 },
-    rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, materialCostPerKg: 4.5, materialDensityGcm3: 8, transportCostPerKg: 0.2,
-    surfaceTreatmentName: 'Passivation', surfaceTreatmentCostPerKg: 1, laborRatePerHour: 60, overheadRatePercentage: 160, setups: [{
+    rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, partSurfaceAreaM2: 0.02, materialCostPerKg: 4.5, materialDensityGcm3: 8, transportCostPerKg: 0.2,
+    surfaceTreatments: [{ id: 'st1', name: 'Passivation', cost: 1, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 60, overheadRatePercentage: 160, setups: [{
       id: 'setup_lathe_1', name: 'Turning Operations', machineId: 'mach_002', timePerSetupMin: 60, toolChangeTimeSec: 15, efficiency: 0.90,
       operations: [
         { id: 'op_l1', processName: 'Facing', toolId: 'tool_003', parameters: { facingDiameter: 80, feedPerRev: 0.2 } },
@@ -487,7 +488,7 @@ const CNC_LATHE_SHOWCASE: Calculation = {
       ]
     }]
   },
-  results: { rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, totalMaterialCostPerKg: 5.7, rawMaterialPartCost: 9.18, materialCost: 4588.5, operationTimeBreakdown: [{ processName: 'Facing', timeMin: 0.21, id: 'op_l1' }, { processName: 'Turning (OD/ID)', timeMin: 0.21, id: 'op_l2' }, { processName: 'Grooving', timeMin: 0.07, id: 'op_l3' }], totalCuttingTimeMin: 0.49, totalSetupTimeMin: 66.67, totalToolChangeTimeMin: 0.83, cycleTimePerPartMin: 0.14, totalMachineTimeHours: 1.13, machineCost: 102, laborCost: 67.8, overheadCost: 7614.88, totalCost: 12373.18, costPerPart: 24.75 },
+  results: { rawMaterialWeightKg: 1.61, finishedPartWeightKg: 1.2, totalMaterialCostPerKg: 4.7, rawMaterialPartCost: 7.57, materialCost: 3783.5, surfaceTreatmentCost: 600, operationTimeBreakdown: [{ processName: 'Facing', timeMin: 0.21, id: 'op_l1' }, { processName: 'Turning (OD/ID)', timeMin: 0.21, id: 'op_l2' }, { processName: 'Grooving', timeMin: 0.07, id: 'op_l3' }], totalCuttingTimeMin: 0.49, totalSetupTimeMin: 66.67, totalToolChangeTimeMin: 0.83, cycleTimePerPartMin: 0.14, totalMachineTimeHours: 1.13, machineCost: 102, laborCost: 67.8, overheadCost: 7285.28, totalCost: 11838.58, costPerPart: 23.68 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -495,15 +496,15 @@ const SAW_SHOWCASE: Calculation = {
   id: 'calc_master_saw_v1',
   inputs: {
     id: 'inputs_master_saw', calculationNumber: 'TPL-SAW-01', partNumber: 'BLK-01', partName: 'Saw Cut-Off Showcase', revision: 'A',
-    createdAt: new Date().toISOString(), annualVolume: 20000, batchVolume: 1000, unitSystem: 'Metric', materialType: 'mat_001',
+    createdAt: new Date().toISOString(), annualVolume: 20000, batchVolume: 1000, unitSystem: 'Metric', materialCategory: 'P - Steel', materialType: 'mat_001',
     rawMaterialProcess: 'Billet', billetShape: 'Bar', billetShapeParameters: { length: 1000, width: 50, height: 50 },
-    rawMaterialWeightKg: 19.68, finishedPartWeightKg: 0.98, materialCostPerKg: 1.5, materialDensityGcm3: 7.87, transportCostPerKg: 0.1,
-    surfaceTreatmentName: 'None', surfaceTreatmentCostPerKg: 0, laborRatePerHour: 40, overheadRatePercentage: 120, setups: [{
+    rawMaterialWeightKg: 19.68, finishedPartWeightKg: 0.98, partSurfaceAreaM2: 0, materialCostPerKg: 1.5, materialDensityGcm3: 7.87, transportCostPerKg: 0.1,
+    surfaceTreatments: [], laborRatePerHour: 40, overheadRatePercentage: 120, setups: [{
       id: 'setup_saw_1', name: 'Sawing Operation', machineId: 'mach_003', timePerSetupMin: 15, toolChangeTimeSec: 0, efficiency: 1,
       operations: [{ id: 'op_s1', processName: 'Band Saw Cut-Off', toolId: 'tool_011', parameters: { cutWidth: 50, bladeTPI: 10, allowance: 5 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 0.98, finishedPartWeightKg: 0.98, totalMaterialCostPerKg: 1.6, rawMaterialPartCost: 1.57, materialCost: 1570, operationTimeBreakdown: [{ processName: 'Band Saw Cut-Off', timeMin: 0.34, id: 'op_s1' }], totalCuttingTimeMin: 0.34, totalSetupTimeMin: 15, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.02, totalMachineTimeHours: 0.26, machineCost: 10.23, laborCost: 10.23, overheadCost: 1913.3, totalCost: 3503.76, costPerPart: 3.5 },
+  results: { rawMaterialWeightKg: 0.98, finishedPartWeightKg: 0.98, totalMaterialCostPerKg: 1.6, rawMaterialPartCost: 1.57, materialCost: 1570, surfaceTreatmentCost: 0, operationTimeBreakdown: [{ processName: 'Band Saw Cut-Off', timeMin: 0.34, id: 'op_s1' }], totalCuttingTimeMin: 0.34, totalSetupTimeMin: 15, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.02, totalMachineTimeHours: 0.26, machineCost: 10.23, laborCost: 10.23, overheadCost: 1913.3, totalCost: 3503.76, costPerPart: 3.5 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -511,15 +512,15 @@ const GEAR_CUTTER_SHOWCASE: Calculation = {
   id: 'calc_master_gear_v1',
   inputs: {
     id: 'inputs_master_gear', calculationNumber: 'TPL-GEAR-01', partNumber: 'GEAR-01', partName: 'Gear Hobbing Showcase', revision: 'A',
-    createdAt: new Date().toISOString(), annualVolume: 2000, batchVolume: 100, unitSystem: 'Metric', materialType: 'mat_003',
+    createdAt: new Date().toISOString(), annualVolume: 2000, batchVolume: 100, unitSystem: 'Metric', materialCategory: 'P - Steel', materialType: 'mat_003',
     rawMaterialProcess: 'Forging', billetShape: undefined, billetShapeParameters: undefined,
-    rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
-    surfaceTreatmentName: 'Carburizing', surfaceTreatmentCostPerKg: 3, laborRatePerHour: 70, overheadRatePercentage: 200, setups: [{
+    rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, partSurfaceAreaM2: 0.04, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
+    surfaceTreatments: [{ id: 'st1', name: 'Carburizing', cost: 3, unit: 'per_kg', based_on: 'finished_weight' }], laborRatePerHour: 70, overheadRatePercentage: 200, setups: [{
       id: 'setup_gear_1', name: 'Gear Hobbing', machineId: 'mach_009', timePerSetupMin: 90, toolChangeTimeSec: 120, efficiency: 0.85,
       operations: [{ id: 'op_g1', processName: 'Gear Hobbing', toolId: 'tool_001', parameters: { faceWidthB: 40, feedPerRevFa: 1.5, allowance: 10, numberOfPasses: 1 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, totalMaterialCostPerKg: 6.7, rawMaterialPartCost: 16.75, materialCost: 1675, operationTimeBreakdown: [{ processName: 'Gear Hobbing', timeMin: 1.47, id: 'op_g1' }], totalCuttingTimeMin: 1.47, totalSetupTimeMin: 105.88, totalToolChangeTimeMin: 2.35, cycleTimePerPartMin: 1.1, totalMachineTimeHours: 1.83, machineCost: 237.53, laborCost: 127.88, overheadCost: 4080.82, totalCost: 6121.23, costPerPart: 61.21 },
+  results: { rawMaterialWeightKg: 2.5, finishedPartWeightKg: 2.1, totalMaterialCostPerKg: 3.7, rawMaterialPartCost: 9.25, materialCost: 925, surfaceTreatmentCost: 630, operationTimeBreakdown: [{ processName: 'Gear Hobbing', timeMin: 1.47, id: 'op_g1' }], totalCuttingTimeMin: 1.47, totalSetupTimeMin: 105.88, totalToolChangeTimeMin: 2.35, cycleTimePerPartMin: 1.1, totalMachineTimeHours: 1.83, machineCost: 237.53, laborCost: 127.88, overheadCost: 3840.82, totalCost: 5761.23, costPerPart: 57.61 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 
@@ -527,15 +528,15 @@ const GRINDER_SHOWCASE: Calculation = {
   id: 'calc_master_grinder_v1',
   inputs: {
     id: 'inputs_master_grinder', calculationNumber: 'TPL-GRIND-01', partNumber: 'PIN-01', partName: 'Surface Grinding Showcase', revision: 'A',
-    createdAt: new Date().toISOString(), annualVolume: 15000, batchVolume: 1000, unitSystem: 'Metric', materialType: 'mat_016',
+    createdAt: new Date().toISOString(), annualVolume: 15000, batchVolume: 1000, unitSystem: 'Metric', materialCategory: 'H - Hardened Steel', materialType: 'mat_016',
     rawMaterialProcess: 'Billet', billetShape: 'Block', billetShapeParameters: { length: 60, width: 60, height: 25 },
-    rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
-    surfaceTreatmentName: 'None', surfaceTreatmentCostPerKg: 0, laborRatePerHour: 65, overheadRatePercentage: 180, setups: [{
+    rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, partSurfaceAreaM2: 0, materialCostPerKg: 3.5, materialDensityGcm3: 7.85, transportCostPerKg: 0.2,
+    surfaceTreatments: [], laborRatePerHour: 65, overheadRatePercentage: 180, setups: [{
       id: 'setup_grinder_1', name: 'Grinding Operation', machineId: 'mach_008', timePerSetupMin: 30, toolChangeTimeSec: 0, efficiency: 0.98,
       operations: [{ id: 'op_gr1', processName: 'Surface Grinding (Reciprocating)', toolId: 'tool_010', parameters: { lengthL: 60, widthW: 60, stockToRemoveSr: 0.1, depthOfCutAp: 0.01, tableSpeedVw: 6000, overlapRatioU: 0.3, sparkOutStrokesNso: 3, allowance: 10, handlingTime: 0.2, dressingTime: 2, partsBetweenDress: 100 } }]
     }]
   },
-  results: { rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, totalMaterialCostPerKg: 3.7, rawMaterialPartCost: 2.63, materialCost: 2627, operationTimeBreakdown: [{ processName: 'Surface Grinding (Reciprocating)', timeMin: 0.62, id: 'op_gr1' }], totalCuttingTimeMin: 0.62, totalSetupTimeMin: 30.61, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.03, totalMachineTimeHours: 0.52, machineCost: 33.82, laborCost: 33.82, overheadCost: 4851.91, totalCost: 7546.54, costPerPart: 7.55 },
+  results: { rawMaterialWeightKg: 0.71, finishedPartWeightKg: 0.7, totalMaterialCostPerKg: 3.7, rawMaterialPartCost: 2.63, materialCost: 2627, surfaceTreatmentCost: 0, operationTimeBreakdown: [{ processName: 'Surface Grinding (Reciprocating)', timeMin: 0.62, id: 'op_gr1' }], totalCuttingTimeMin: 0.62, totalSetupTimeMin: 30.61, totalToolChangeTimeMin: 0, cycleTimePerPartMin: 0.03, totalMachineTimeHours: 0.52, machineCost: 33.82, laborCost: 33.82, overheadCost: 4851.91, totalCost: 7546.54, costPerPart: 7.55 },
   status: 'final', user_id: 'system-default', created_at: '2024-01-01T00:00:00.000Z',
 };
 

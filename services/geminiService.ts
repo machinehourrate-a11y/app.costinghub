@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool } from '../types';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
@@ -252,6 +253,51 @@ export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, '
         });
     } catch (error) {
         console.error("Error calling Gemini API for multiple tool suggestion:", error);
+        return null;
+    }
+};
+
+const toolLifeResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        estimatedLife: { 
+            type: Type.NUMBER, 
+            description: "The calculated estimated tool life in hours." 
+        }
+    },
+    required: ["estimatedLife"]
+};
+
+export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at'>): Promise<number | null> => {
+    const prompt = `
+        Given the following tool parameters:
+        - Tool Type: ${tool.toolType}
+        - Tool Material: ${tool.material}
+        - Diameter: ${tool.diameter} mm
+        - Number of Teeth: ${tool.numberOfTeeth ?? 'N/A'}
+        - Cutting Speed (Vc): ${tool.cuttingSpeedVc ?? 'N/A'} m/min
+        - Feed per Tooth (fz): ${tool.feedPerTooth ?? 'N/A'} mm
+
+        Calculate an estimated tool life in hours. Assume the tool is used for a common application, such as machining mild steel or aluminum, under normal conditions. 
+        Consider typical wear patterns for this type of tool and material. 
+        Provide only the numeric value for the estimated life in hours in your JSON response.
+    `;
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: toolLifeResponseSchema,
+            },
+        });
+        const result = cleanAndParseJson(response.text);
+        if (result && typeof result.estimatedLife === 'number') {
+            return Math.round(result.estimatedLife);
+        }
+        return null;
+    } catch (error) {
+        console.error("Error calling Gemini API for tool life calculation:", error);
         return null;
     }
 };

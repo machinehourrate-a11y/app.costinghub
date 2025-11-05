@@ -183,21 +183,39 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
     batchVolume,
     materialCostPerKg,
     transportCostPerKg,
-    surfaceTreatmentCostPerKg,
+    surfaceTreatments,
     setups,
     laborRatePerHour,
     overheadRatePercentage,
     rawMaterialWeightKg,
-    finishedPartWeightKg
+    finishedPartWeightKg,
+    partSurfaceAreaM2
   } = inputs;
 
   // 1. Material Cost Calculation
-  const totalMaterialCostPerKg = (materialCostPerKg || 0) + (transportCostPerKg || 0) + (surfaceTreatmentCostPerKg || 0);
+  const totalMaterialCostPerKg = (materialCostPerKg || 0) + (transportCostPerKg || 0);
   const rawMaterialPartCost = rawMaterialWeightKg * totalMaterialCostPerKg;
   const materialCost = rawMaterialPartCost * batchVolume;
 
+  // 2. Surface Treatment Cost
+  let surfaceTreatmentCostPerPart = 0;
+  if (surfaceTreatments && surfaceTreatments.length > 0) {
+    surfaceTreatmentCostPerPart = surfaceTreatments.reduce((total, treatment) => {
+        if (treatment.unit === 'per_kg') {
+            // Default to finished weight if based_on is not specified for backward compatibility
+            const weightToUse = treatment.based_on === 'raw_weight' ? rawMaterialWeightKg : finishedPartWeightKg;
+            return total + (treatment.cost * weightToUse);
+        }
+        if (treatment.unit === 'per_area') {
+            return total + (treatment.cost * partSurfaceAreaM2);
+        }
+        return total;
+    }, 0);
+  }
+  const surfaceTreatmentCost = surfaceTreatmentCostPerPart * batchVolume;
 
-  // 2. Time and Machine Cost Calculation
+
+  // 3. Time and Machine Cost Calculation
   let totalCuttingTimeMin = 0;
   let totalSetupTimeMin = 0;
   let totalToolChangeTimeMin = 0;
@@ -243,9 +261,9 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   const totalMachineTimeHours = totalMachineTimeMinutes / 60;
   const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutes / batchVolume : 0;
   
-  // 3. Cost Calculation
+  // 4. Cost Calculation
   const laborCost = totalMachineTimeHours * laborRatePerHour;
-  const totalDirectCost = machineCost + laborCost + materialCost;
+  const totalDirectCost = machineCost + laborCost + materialCost + surfaceTreatmentCost;
   const overheadCost = totalDirectCost * (overheadRatePercentage / 100);
   const totalCost = totalDirectCost + overheadCost;
   const costPerPart = batchVolume > 0 ? totalCost / batchVolume : 0;
@@ -256,6 +274,7 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
     totalMaterialCostPerKg,
     rawMaterialPartCost,
     materialCost,
+    surfaceTreatmentCost,
     operationTimeBreakdown,
     totalCuttingTimeMin,
     totalSetupTimeMin,

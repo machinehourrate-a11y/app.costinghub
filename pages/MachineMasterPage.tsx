@@ -1,33 +1,42 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
 import { MachineModal } from '../components/MachineModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import type { Machine, MachineLibraryPageProps } from '../types';
 import { MultiMachineModal } from '../components/MultiMachineModal';
-import { MACHINE_TYPES, DEFAULT_MACHINE_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { MACHINE_TYPES, DEFAULT_MACHINE_IDS, SUPER_ADMIN_EMAILS, ADDITIONAL_AXIS_OPTIONS } from '../constants';
+import { FilterPopover } from '../components/FilterPopover';
+import { FilterIcon } from '../components/ui/FilterIcon';
 
 const ITEMS_PER_PAGE = 10;
 
-export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, machines, onAddMachine, onUpdateMachine, onDeleteMachine, onAddMultipleMachines }) => {
+export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, machines, onAddMachine, onUpdateMachine, onDeleteMachine, onAddMultipleMachines, onDeleteMultipleMachines }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
   const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [machineToDelete, setMachineToDelete] = useState<Machine | null>(null);
 
   // Filters and pagination state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [typeFilter, setTypeFilter] = useState('All');
-  const [minX, setMinX] = useState('');
-  const [maxX, setMaxX] = useState('');
-  const [minY, setMinY] = useState('');
-  const [maxY, setMaxY] = useState('');
-  const [minZ, setMinZ] = useState('');
-  const [maxZ, setMaxZ] = useState('');
+  const [filters, setFilters] = useState<Record<string, any>>({});
+  const [activePopover, setActivePopover] = useState<{ column: string; anchorEl: HTMLElement } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   
+  // State for bulk delete
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  
+  const filterRefs = {
+      name: useRef<HTMLButtonElement>(null),
+      machineType: useRef<HTMLButtonElement>(null),
+      hourlyRate: useRef<HTMLButtonElement>(null),
+      powerKw: useRef<HTMLButtonElement>(null),
+      additionalAxis: useRef<HTMLButtonElement>(null),
+  };
+
   const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
   
   const handleAddNew = () => {
@@ -63,46 +72,48 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
   // Memoized filtering logic
   const filteredMachines = useMemo(() => {
     return machines.filter(machine => {
-        const lowercasedTerm = searchTerm.toLowerCase();
-        const searchMatch = searchTerm === '' ||
-            machine.name.toLowerCase().includes(lowercasedTerm) ||
-            machine.brand.toLowerCase().includes(lowercasedTerm) ||
-            machine.model.toLowerCase().includes(lowercasedTerm);
+      const nameMatch = !filters.name || (machine.name.toLowerCase().includes(filters.name.toLowerCase()) || machine.brand.toLowerCase().includes(filters.name.toLowerCase()) || machine.model.toLowerCase().includes(filters.name.toLowerCase()));
+      const typeMatch = !filters.machineType?.length || filters.machineType.includes(machine.machineType);
+      const axisMatch = !filters.additionalAxis?.length || filters.additionalAxis.includes(machine.additionalAxis);
+      
+      const rateMatch = 
+          (filters.minHourlyRate === undefined || machine.hourlyRate >= filters.minHourlyRate) &&
+          (filters.maxHourlyRate === undefined || machine.hourlyRate <= filters.maxHourlyRate);
 
-        const typeMatch = typeFilter === 'All' || machine.machineType === typeFilter;
+      const powerMatch = 
+          (filters.minPowerKw === undefined || machine.powerKw >= filters.minPowerKw) &&
+          (filters.maxPowerKw === undefined || machine.powerKw <= filters.maxPowerKw);
 
-        const checkRange = (value: number, min: string, max: string) => {
-            const minVal = parseFloat(min);
-            const maxVal = parseFloat(max);
-            const minMatch = isNaN(minVal) || value >= minVal;
-            const maxMatch = isNaN(maxVal) || value <= maxVal;
-            return minMatch && maxMatch;
-        };
-        
-        const xMatch = checkRange(machine.xAxis, minX, maxX);
-        const yMatch = checkRange(machine.yAxis, minY, maxY);
-        const zMatch = checkRange(machine.zAxis, minZ, maxZ);
-
-        return searchMatch && typeMatch && xMatch && yMatch && zMatch;
+      return nameMatch && typeMatch && axisMatch && rateMatch && powerMatch;
     });
-  }, [machines, searchTerm, typeFilter, minX, maxX, minY, maxY, minZ, maxZ]);
+  }, [machines, filters]);
   
   const resetFilters = () => {
-    setSearchTerm('');
-    setTypeFilter('All');
-    setMinX('');
-    setMaxX('');
-    setMinY('');
-    setMaxY('');
-    setMinZ('');
-    setMaxZ('');
+    setFilters({});
     setCurrentPage(1);
   };
   
-  const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
-      setter(value);
-      setCurrentPage(1);
-  };
+    const handleApplyFilter = (column: string, value: any) => {
+        setFilters(prev => ({...prev, [column]: value}));
+        setActivePopover(null);
+        setCurrentPage(1);
+    };
+    
+    const handleClearFilter = (column: string) => {
+        const newFilters = {...filters};
+        delete newFilters[column];
+        if (column === 'hourlyRate') {
+            delete newFilters.minHourlyRate;
+            delete newFilters.maxHourlyRate;
+        }
+        if (column === 'powerKw') {
+            delete newFilters.minPowerKw;
+            delete newFilters.maxPowerKw;
+        }
+        setFilters(newFilters);
+        setActivePopover(null);
+        setCurrentPage(1);
+    }
 
   // Pagination logic
   const totalPages = Math.ceil(filteredMachines.length / ITEMS_PER_PAGE);
@@ -110,6 +121,36 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredMachines.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredMachines, currentPage]);
+
+  // --- Bulk Delete Handlers ---
+  const handleToggleSelectionMode = () => {
+      setIsSelectionMode(prev => !prev);
+      setSelectedIds([]);
+  };
+
+  const handleToggleSelection = (id: string) => {
+      setSelectedIds(prev =>
+          prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+      );
+  };
+  
+  const handleToggleSelectAll = () => {
+      if (selectedIds.length === paginatedMachines.filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin).length) {
+          setSelectedIds([]);
+      } else {
+          const selectableIds = paginatedMachines
+              .filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin)
+              .map(m => m.id);
+          setSelectedIds(selectableIds);
+      }
+  };
+  
+  const confirmBulkDelete = () => {
+      onDeleteMultipleMachines(selectedIds);
+      setIsBulkDeleteModalOpen(false);
+      setSelectedIds([]);
+      setIsSelectionMode(false);
+  };
 
 
   return (
@@ -138,60 +179,75 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
           onCancel={() => setMachineToDelete(null)}
         />
       )}
+      {isBulkDeleteModalOpen && (
+          <ConfirmationModal
+              title={`Delete ${selectedIds.length} Machines`}
+              message={`Are you sure you want to delete the selected machines? This action cannot be undone.`}
+              onConfirm={confirmBulkDelete}
+              onCancel={() => setIsBulkDeleteModalOpen(false)}
+          />
+      )}
       
       <Card>
-        <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
-          <h2 className="text-2xl font-bold text-primary">Your Machines</h2>
-          <div className="flex items-center space-x-4">
-            <Button onClick={handleAddNew}>+ Add New Machine</Button>
-            <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
-          </div>
+        <div className="border-b border-border pb-4 mb-6 flex justify-between items-center gap-4">
+            <h2 className="text-2xl font-bold text-primary flex-shrink-0">Machine Library</h2>
+            <div className="flex items-center space-x-2 flex-shrink-0">
+                <Button variant="secondary" onClick={resetFilters}>Reset Filters</Button>
+                <Button variant="secondary" onClick={handleToggleSelectionMode}>
+                  {isSelectionMode ? 'Cancel' : 'Select'}
+                </Button>
+                <Button onClick={handleAddNew}>+ Add New</Button>
+                <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple</Button>
+            </div>
         </div>
 
-        {/* Filter Section */}
-        <div className="p-4 bg-background/50 rounded-lg border border-border mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                <div className="lg:col-span-2">
-                    <Input
-                        label="Search Name, Brand or Model"
-                        placeholder="e.g., HAAS VF-2"
-                        value={searchTerm}
-                        onChange={(e) => handleFilterChange(setSearchTerm, e.target.value)}
-                    />
+
+        {isSelectionMode && (
+            <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg mb-4 border border-primary/20">
+                <span className="font-semibold text-primary">{selectedIds.length} item(s) selected</span>
+                <div>
+                    <Button 
+                        variant="secondary" 
+                        className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                        onClick={() => setIsBulkDeleteModalOpen(true)}
+                        disabled={selectedIds.length === 0}
+                    >
+                        Delete Selected
+                    </Button>
                 </div>
-                <Select
-                    label="Machine Type"
-                    value={typeFilter}
-                    onChange={(e) => handleFilterChange(setTypeFilter, e.target.value)}
-                >
-                    <option value="All">All Types</option>
-                    {MACHINE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                </Select>
-                 <Button variant="secondary" onClick={resetFilters} className="self-end">Reset Filters</Button>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mt-4">
-                <Input label="Min X (mm)" type="number" placeholder="Min" value={minX} onChange={(e) => handleFilterChange(setMinX, e.target.value)} />
-                <Input label="Max X (mm)" type="number" placeholder="Max" value={maxX} onChange={(e) => handleFilterChange(setMaxX, e.target.value)} />
-                <Input label="Min Y (mm)" type="number" placeholder="Min" value={minY} onChange={(e) => handleFilterChange(setMinY, e.target.value)} />
-                <Input label="Max Y (mm)" type="number" placeholder="Max" value={maxY} onChange={(e) => handleFilterChange(setMaxY, e.target.value)} />
-                <Input label="Min Z (mm)" type="number" placeholder="Min" value={minZ} onChange={(e) => handleFilterChange(setMinZ, e.target.value)} />
-                <Input label="Max Z (mm)" type="number" placeholder="Max" value={maxZ} onChange={(e) => handleFilterChange(setMaxZ, e.target.value)} />
-            </div>
-        </div>
-
+        )}
 
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-border">
             <thead className="bg-background/50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Machine Name</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Brand</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Model</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Rate ($/hr)</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Type</th>
+                {isSelectionMode && (
+                    <th scope="col" className="px-4 py-3 w-12">
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
+                            checked={paginatedMachines.length > 0 && selectedIds.length === paginatedMachines.filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin).length}
+                            onChange={handleToggleSelectAll}
+                        />
+                    </th>
+                )}
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    <div className="flex items-center gap-2">Machine Name <button ref={filterRefs.name} onClick={() => setActivePopover({ column: 'name', anchorEl: filterRefs.name.current! })}><FilterIcon isActive={!!filters.name} /></button></div>
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    <div className="flex items-center gap-2">Type <button ref={filterRefs.machineType} onClick={() => setActivePopover({ column: 'machineType', anchorEl: filterRefs.machineType.current! })}><FilterIcon isActive={!!filters.machineType?.length} /></button></div>
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    <div className="flex items-center gap-2">Rate ($/hr) <button ref={filterRefs.hourlyRate} onClick={() => setActivePopover({ column: 'hourlyRate', anchorEl: filterRefs.hourlyRate.current! })}><FilterIcon isActive={filters.minHourlyRate !== undefined || filters.maxHourlyRate !== undefined} /></button></div>
+                </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Work Envelope (mm)</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Power (kW)</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Add. Axis</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    <div className="flex items-center gap-2">Power (kW) <button ref={filterRefs.powerKw} onClick={() => setActivePopover({ column: 'powerKw', anchorEl: filterRefs.powerKw.current! })}><FilterIcon isActive={filters.minPowerKw !== undefined || filters.maxPowerKw !== undefined} /></button></div>
+                </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                    <div className="flex items-center gap-2">Add. Axis <button ref={filterRefs.additionalAxis} onClick={() => setActivePopover({ column: 'additionalAxis', anchorEl: filterRefs.additionalAxis.current! })}><FilterIcon isActive={!!filters.additionalAxis?.length} /></button></div>
+                </th>
                 <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -200,27 +256,36 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
                 const isDefault = DEFAULT_MACHINE_IDS.has(machine.id);
                 const canModify = !isDefault || isSuperAdmin;
                 return (
-                  <tr key={machine.id} className="hover:bg-background/60">
+                  <tr key={machine.id} className={`cursor-pointer hover:bg-background/60 ${selectedIds.includes(machine.id) ? '!bg-primary/20' : ''}`} onClick={() => { if(isSelectionMode && canModify) handleToggleSelection(machine.id)}}>
+                    {isSelectionMode && (
+                        <td className="px-4 py-4">
+                            <input
+                                type="checkbox"
+                                checked={selectedIds.includes(machine.id)}
+                                onChange={() => handleToggleSelection(machine.id)}
+                                disabled={!canModify}
+                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                            />
+                        </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">
                       {machine.name}
                       {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.brand}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.model}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${machine.hourlyRate.toFixed(2)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.machineType}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${machine.hourlyRate.toFixed(2)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{`${machine.xAxis} x ${machine.yAxis} x ${machine.zAxis}`}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.powerKw}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.additionalAxis}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <Button variant="secondary" onClick={() => handleEdit(machine)} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Edit</Button>
-                      <Button variant="secondary" onClick={() => handleDelete(machine)} disabled={!canModify} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} title={!canModify ? "Default items cannot be modified" : ""}>Delete</Button>
+                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(machine); }} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Edit</Button>
+                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(machine); }} disabled={!canModify} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} title={!canModify ? "Default items cannot be modified" : ""}>Delete</Button>
                     </td>
                   </tr>
                 )
               }) : (
                 <tr>
-                    <td colSpan={9} className="text-center py-10 text-text-secondary">
+                    <td colSpan={isSelectionMode ? 8 : 7} className="text-center py-10 text-text-secondary">
                         No machines found matching your criteria.
                     </td>
                 </tr>
@@ -256,8 +321,88 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
                 </div>
             )}
        </div>
+       
+        {activePopover?.column && (
+            <FilterPopover 
+                anchorEl={activePopover.anchorEl} 
+                onClose={() => setActivePopover(null)} 
+                title={`Filter by ${activePopover.column.replace(/([A-Z])/g, ' $1')}`}
+            >
+                <FilterContent
+                    column={activePopover.column}
+                    filters={filters}
+                    onApplyFilter={handleApplyFilter}
+                    onClearFilter={handleClearFilter}
+                />
+            </FilterPopover>
+        )}
 
       </Card>
     </div>
   );
 };
+
+// A component to render the content of the filter popover
+const FilterContent: React.FC<{column: string; filters: Record<string, any>; onApplyFilter: (col: string, val: any) => void; onClearFilter: (col: string) => void;}> = ({ column, filters, onApplyFilter, onClearFilter }) => {
+    
+    // Checkbox filter for categorical data
+    if (column === 'machineType' || column === 'additionalAxis') {
+        const options = column === 'machineType' ? MACHINE_TYPES : ADDITIONAL_AXIS_OPTIONS;
+        const [selected, setSelected] = useState(filters[column] || []);
+        const handleToggle = (option: string) => {
+            setSelected((prev: string[]) => prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option]);
+        }
+        return (
+            <div className="space-y-2">
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                    {options.map(option => (
+                        <label key={option} className="flex items-center space-x-2 p-1 rounded hover:bg-background cursor-pointer">
+                            <input type="checkbox" checked={selected.includes(option)} onChange={() => handleToggle(option)} className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary" />
+                            <span>{option}</span>
+                        </label>
+                    ))}
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClearFilter(column)}>Clear</Button>
+                    <Button className="!px-3 !py-1 text-xs" onClick={() => onApplyFilter(column, selected)}>Apply</Button>
+                </div>
+            </div>
+        )
+    }
+    
+    // Range filter for numeric data
+    if (column === 'hourlyRate' || column === 'powerKw') {
+        const minKey = `min${column.charAt(0).toUpperCase() + column.slice(1)}`;
+        const maxKey = `max${column.charAt(0).toUpperCase() + column.slice(1)}`;
+        const [min, setMin] = useState(filters[minKey] || '');
+        const [max, setMax] = useState(filters[maxKey] || '');
+        
+        const handleApply = () => {
+             onApplyFilter(minKey, min !== '' ? parseFloat(min) : undefined);
+             onApplyFilter(maxKey, max !== '' ? parseFloat(max) : undefined);
+        }
+        
+        return (
+             <div className="space-y-2">
+                <Input label="Min" type="number" value={min} onChange={e => setMin(e.target.value)} />
+                <Input label="Max" type="number" value={max} onChange={e => setMax(e.target.value)} />
+                 <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClearFilter(column)}>Clear</Button>
+                    <Button className="!px-3 !py-1 text-xs" onClick={handleApply}>Apply</Button>
+                </div>
+            </div>
+        )
+    }
+
+    // Default text filter
+    const [value, setValue] = useState(filters[column] || '');
+    return (
+        <div className="space-y-2">
+            <Input label="" placeholder={`Search ${column}...`} value={value} onChange={e => setValue(e.target.value)} />
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClearFilter(column)}>Clear</Button>
+                <Button className="!px-3 !py-1 text-xs" onClick={() => onApplyFilter(column, value)}>Apply</Button>
+            </div>
+        </div>
+    )
+}

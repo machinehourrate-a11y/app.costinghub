@@ -1,25 +1,28 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { MaterialChart } from '../components/MaterialChart';
 import { MaterialComparison } from '../components/MaterialComparison';
-import type { MaterialMasterItem, MaterialProperty, User } from '../types';
+import type { MaterialMasterItem, MaterialsPageProps, MaterialProperty, User } from '../types';
 import { MaterialModal } from '../components/MaterialModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { MultiMaterialModal } from '../components/MultiMaterialModal';
 import { DEFAULT_MATERIAL_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { FilterPopover } from '../components/FilterPopover';
+import { FilterIcon } from '../components/ui/FilterIcon';
 import { Input } from '../components/ui/Input';
-import { Select } from '../components/ui/Select';
 
 const ITEMS_PER_PAGE = 10;
 
-interface MaterialsPageProps {
-  materials: MaterialMasterItem[];
-  user: User;
-  onAddMaterial: (material: MaterialMasterItem) => void;
-  onUpdateMaterial: (material: MaterialMasterItem) => void;
-  onDeleteMaterial: (materialId: string) => void;
-  onAddMultipleMaterials: (materials: Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[]) => void;
+const getNumericPropertyValue = (material: MaterialMasterItem, propName: string): number | null => {
+    if (material.properties && typeof material.properties === 'object') {
+        const prop = (material.properties as any)[propName];
+        if (prop && typeof prop === 'object' && 'value' in prop) {
+            const val = parseFloat(prop.value);
+            if (!isNaN(val)) return val;
+        }
+    }
+    return null;
 }
 
 const renderMaterialProperty = (property: unknown): string => {
@@ -38,8 +41,7 @@ const renderMaterialProperty = (property: unknown): string => {
   return 'N/A';
 };
 
-
-export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, onAddMaterial, onUpdateMaterial, onDeleteMaterial, onAddMultipleMaterials }) => {
+export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, onAddMaterial, onUpdateMaterial, onDeleteMaterial, onAddMultipleMaterials, onDeleteMultipleMaterials }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isMultiModalOpen, setIsMultiModalOpen] = useState(false);
     const [editingMaterial, setEditingMaterial] = useState<MaterialMasterItem | null>(null);
@@ -51,10 +53,23 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
     const [isComparisonMode, setIsComparisonMode] = useState(false);
 
     // Filters and pagination state
-    const [searchTerm, setSearchTerm] = useState('');
-    const [categoryFilter, setCategoryFilter] = useState('All');
-    const [subCategoryFilter, setSubCategoryFilter] = useState('All');
+    const [filters, setFilters] = useState<Record<string, any>>({});
+    const [activePopover, setActivePopover] = useState<{ column: string; anchorEl: HTMLElement } | null>(null);
     const [currentPage, setCurrentPage] = useState(1);
+    
+    // Refs for popover anchors
+    const filterRefs = {
+        name: useRef<HTMLButtonElement>(null),
+        category: useRef<HTMLButtonElement>(null),
+        subCategory: useRef<HTMLButtonElement>(null),
+        density: useRef<HTMLButtonElement>(null),
+        cost: useRef<HTMLButtonElement>(null),
+    };
+
+    // State for bulk delete
+    const [isSelectionMode, setIsSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
     
     const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
     
@@ -118,43 +133,44 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
         });
     };
     
-    const availableSubCategories = useMemo(() => {
-        const relevantMaterials = categoryFilter === 'All' 
-            ? materials 
-            : materials.filter(m => m.category === categoryFilter);
-
-        const subCats = new Set<string>();
-        relevantMaterials.forEach(m => {
-            if (m.subCategory) {
-                subCats.add(m.subCategory);
-            }
-        });
-        return Array.from(subCats).sort();
-    }, [materials, categoryFilter]);
-
     const filteredMaterials = useMemo(() => {
         return materials.filter(material => {
-            const lowercasedTerm = searchTerm.toLowerCase();
-            const searchMatch = searchTerm === '' ||
-                material.name.toLowerCase().includes(lowercasedTerm);
-
-            const categoryMatch = categoryFilter === 'All' || material.category === categoryFilter;
-            const subCategoryMatch = subCategoryFilter === 'All' || material.subCategory === subCategoryFilter;
-
-            return searchMatch && categoryMatch && subCategoryMatch;
+            const nameMatch = !filters.name || material.name.toLowerCase().includes(filters.name.toLowerCase());
+            const categoryMatch = !filters.category?.length || filters.category.includes(material.category);
+            const subCategoryMatch = !filters.subCategory || (material.subCategory && material.subCategory.toLowerCase().includes(filters.subCategory.toLowerCase()));
+            
+            const densityProp = (material.properties as any)['Density'];
+            const densityString = densityProp ? `${densityProp.value}` : '';
+            const densityMatch = !filters.densitySearch || (densityString && densityString.includes(filters.densitySearch));
+            
+            const cost = getNumericPropertyValue(material, 'Cost Per Kg');
+            const costMatch = 
+                (filters.minCost === undefined || cost === null || cost >= filters.minCost) &&
+                (filters.maxCost === undefined || cost === null || cost <= filters.maxCost);
+            
+            return nameMatch && categoryMatch && subCategoryMatch && densityMatch && costMatch;
         });
-    }, [materials, searchTerm, categoryFilter, subCategoryFilter]);
+    }, [materials, filters]);
 
-    const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
-        setter(value);
+    const resetFilters = () => {
+        setFilters({});
+        setCurrentPage(1);
+    };
+    
+    const handleApplyFilters = (updates: Record<string, any>) => {
+        setFilters(prev => ({ ...prev, ...updates }));
+        setActivePopover(null);
         setCurrentPage(1);
     };
 
-    const handleCategoryFilterChange = (value: string) => {
-        setCategoryFilter(value);
-        setSubCategoryFilter('All');
-        setCurrentPage(1);
+    const handleClearFilters = (keys: string[]) => {
+        const newFilters = { ...filters };
+        keys.forEach(key => delete newFilters[key]);
+        setFilters(newFilters);
+        setActivePopover(null);
     };
+
+    const uniqueCategories = useMemo(() => [...new Set(materials.map(m => m.category))].sort(), [materials]);
 
     const totalPages = Math.ceil(filteredMaterials.length / ITEMS_PER_PAGE);
     const paginatedMaterials = useMemo(() => {
@@ -162,7 +178,35 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
         return filteredMaterials.slice(startIndex, startIndex + ITEMS_PER_PAGE);
     }, [filteredMaterials, currentPage]);
 
-    const materialCategories = useMemo(() => Array.from(new Set(materials.map(m => m.category))).sort(), [materials]);
+    // --- Bulk Delete Handlers ---
+    const handleToggleSelectionMode = () => {
+        setIsSelectionMode(prev => !prev);
+        setSelectedIds([]);
+    };
+
+    const handleToggleSelection = (id: string) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+        );
+    };
+    
+    const handleToggleSelectAll = () => {
+        if (selectedIds.length === paginatedMaterials.filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin).length) {
+            setSelectedIds([]);
+        } else {
+            const selectableIds = paginatedMaterials
+                .filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin)
+                .map(mat => mat.id);
+            setSelectedIds(selectableIds);
+        }
+    };
+    
+    const confirmBulkDelete = () => {
+        onDeleteMultipleMaterials(selectedIds);
+        setIsBulkDeleteModalOpen(false);
+        setSelectedIds([]);
+        setIsSelectionMode(false);
+    };
 
     return (
         <div className="w-full mx-auto flex flex-col space-y-8 animate-fade-in">
@@ -190,65 +234,97 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                     onCancel={() => setMaterialToDelete(null)}
                 />
             )}
+            {isBulkDeleteModalOpen && (
+                <ConfirmationModal
+                    title={`Delete ${selectedIds.length} Materials`}
+                    message={`Are you sure you want to delete the selected materials? This action cannot be undone.`}
+                    onConfirm={confirmBulkDelete}
+                    onCancel={() => setIsBulkDeleteModalOpen(false)}
+                />
+            )}
 
             <Card>
-                <div className="flex justify-between items-start mb-6 border-b border-border pb-4">
-                    <div>
-                        <h2 className="text-2xl font-bold text-primary">Material Library</h2>
-                        <p className="text-sm text-text-secondary mt-1">Browse, compare, and manage your material data.</p>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <Button onClick={handleAddNew}>+ Add New Material</Button>
-                        <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
-                    </div>
-                </div>
-
-                {/* Filters and List */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
-                    <Input 
-                        label="Search material"
-                        placeholder="e.g., Aluminum 6061-T6"
-                        value={searchTerm}
-                        onChange={(e) => handleFilterChange(setSearchTerm, e.target.value)}
-                    />
-                    <Select
-                        label="Material Group"
-                        value={categoryFilter}
-                        onChange={(e) => handleCategoryFilterChange(e.target.value)}
-                    >
-                        <option value="All">All Groups</option>
-                        {materialCategories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </Select>
-                     <Select
-                        label="Search for a Sub Group"
-                        value={subCategoryFilter}
-                        onChange={(e) => handleFilterChange(setSubCategoryFilter, e.target.value)}
-                    >
-                        <option value="All">All Sub Groups</option>
-                        {availableSubCategories.map(subCat => <option key={subCat} value={subCat}>{subCat}</option>)}
-                    </Select>
-                     <div className="flex items-end justify-end">
-                        <label className="flex items-center cursor-pointer">
-                            <span className="mr-3 text-sm font-medium text-text-secondary">Compare Materials</span>
+                <div className="border-b border-border pb-4 mb-6 flex justify-between items-center gap-4">
+                    <h2 className="text-2xl font-bold text-primary flex-shrink-0">Material Library</h2>
+                    <div className="flex items-center space-x-2 flex-shrink-0">
+                        <label className="flex items-center cursor-pointer mr-4">
+                            <span className="mr-3 text-sm font-medium text-text-secondary">Compare</span>
                             <div className="relative">
                                 <input type="checkbox" checked={isComparisonMode} onChange={() => setIsComparisonMode(!isComparisonMode)} className="sr-only" />
                                 <div className={`block w-14 h-8 rounded-full ${isComparisonMode ? 'bg-primary' : 'bg-border'}`}></div>
                                 <div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isComparisonMode ? 'translate-x-6' : ''}`}></div>
                             </div>
                         </label>
+                        <Button variant="secondary" onClick={resetFilters}>Reset Filters</Button>
+                        <Button variant="secondary" onClick={handleToggleSelectionMode}>
+                          {isSelectionMode ? 'Cancel' : 'Select'}
+                        </Button>
+                        <Button onClick={handleAddNew}>+ Add New</Button>
+                        <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple</Button>
                     </div>
                 </div>
+                
+                {isSelectionMode && (
+                    <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg mb-4 border border-primary/20">
+                        <span className="font-semibold text-primary">{selectedIds.length} item(s) selected</span>
+                        <div>
+                            <Button 
+                                variant="secondary" 
+                                className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400"
+                                onClick={() => setIsBulkDeleteModalOpen(true)}
+                                disabled={selectedIds.length === 0}
+                            >
+                                Delete Selected
+                            </Button>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="mt-4 overflow-x-auto">
                     <table className="min-w-full divide-y divide-border">
                         <thead className="bg-background/50">
                             <tr>
+                                {isSelectionMode && (
+                                    <th scope="col" className="px-4 py-3 w-12">
+                                        <input
+                                            type="checkbox"
+                                            className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
+                                            checked={paginatedMaterials.length > 0 && selectedIds.length === paginatedMaterials.filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin).length}
+                                            onChange={handleToggleSelectAll}
+                                        />
+                                    </th>
+                                )}
                                 {isComparisonMode && <th scope="col" className="px-4 py-3 w-12"><span className="sr-only">Compare</span></th>}
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Material Grade</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Material Group</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Sub-Category</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Density</th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Cost / Kg</th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                    <div className="flex items-center gap-2">
+                                        Material Grade
+                                        <button ref={filterRefs.name} onClick={() => setActivePopover({ column: 'name', anchorEl: filterRefs.name.current! })}><FilterIcon isActive={!!filters.name} /></button>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                    <div className="flex items-center gap-2">
+                                        Material Group
+                                        <button ref={filterRefs.category} onClick={() => setActivePopover({ column: 'category', anchorEl: filterRefs.category.current! })}><FilterIcon isActive={!!filters.category?.length} /></button>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                     <div className="flex items-center gap-2">
+                                        Sub-Category
+                                        <button ref={filterRefs.subCategory} onClick={() => setActivePopover({ column: 'subCategory', anchorEl: filterRefs.subCategory.current! })}><FilterIcon isActive={!!filters.subCategory} /></button>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                     <div className="flex items-center gap-2">
+                                        Density
+                                        <button ref={filterRefs.density} onClick={() => setActivePopover({ column: 'density', anchorEl: filterRefs.density.current! })}><FilterIcon isActive={!!filters.densitySearch} /></button>
+                                    </div>
+                                </th>
+                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                                     <div className="flex items-center gap-2">
+                                        Cost / Kg
+                                        <button ref={filterRefs.cost} onClick={() => setActivePopover({ column: 'cost', anchorEl: filterRefs.cost.current! })}><FilterIcon isActive={filters.minCost !== undefined || filters.maxCost !== undefined} /></button>
+                                    </div>
+                                </th>
                                 <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                             </tr>
                         </thead>
@@ -259,9 +335,27 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                                 return (
                                 <tr
                                     key={mat.id}
-                                    className={`cursor-pointer ${selectedMaterial?.id === mat.id && !isComparisonMode ? 'bg-primary/10' : 'hover:bg-background/60'}`}
-                                    onClick={() => !isComparisonMode && setSelectedMaterial(mat)}
+                                    className={`cursor-pointer ${selectedMaterial?.id === mat.id && !isComparisonMode && !isSelectionMode ? 'bg-primary/10' : 'hover:bg-background/60'} ${selectedIds.includes(mat.id) ? '!bg-primary/20' : ''}`}
+                                    onClick={() => {
+                                        if (isComparisonMode) return;
+                                        if (isSelectionMode) {
+                                            if (canModify) handleToggleSelection(mat.id);
+                                        } else {
+                                            setSelectedMaterial(mat);
+                                        }
+                                    }}
                                 >
+                                    {isSelectionMode && (
+                                        <td className="px-4 py-4">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedIds.includes(mat.id)}
+                                                onChange={() => handleToggleSelection(mat.id)}
+                                                disabled={!canModify}
+                                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                                            />
+                                        </td>
+                                    )}
                                     {isComparisonMode && (
                                         <td className="px-4 py-4">
                                             <input
@@ -337,6 +431,98 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                     </div>
                 </Card>
             )}
+
+            {/* Filter Popovers */}
+            {activePopover?.column && (
+                <FilterPopover 
+                    anchorEl={activePopover.anchorEl} 
+                    onClose={() => setActivePopover(null)} 
+                    title={`Filter by ${activePopover.column.replace(/([A-Z])/g, ' $1')}`}
+                >
+                    <FilterContent
+                        column={activePopover.column}
+                        filters={filters}
+                        onApply={handleApplyFilters}
+                        onClear={handleClearFilters}
+                        uniqueOptions={activePopover.column === 'category' ? uniqueCategories : []}
+                    />
+                </FilterPopover>
+            )}
+
         </div>
     );
 };
+
+const FilterContent: React.FC<{column: string, filters: Record<string, any>, onApply: (updates: Record<string, any>) => void, onClear: (keys: string[]) => void, uniqueOptions?: string[]}> = ({ column, filters, onApply, onClear, uniqueOptions=[] }) => {
+    
+    if (column === 'category') {
+        const [selected, setSelected] = useState(filters.category || []);
+        const handleToggle = (option: string) => {
+            setSelected((prev: string[]) => prev.includes(option) ? prev.filter(o => o !== option) : [...prev, option]);
+        }
+        return (
+            <div className="space-y-2">
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                    {uniqueOptions.map(option => (
+                        <label key={option} className="flex items-center space-x-2 p-1 rounded hover:bg-background cursor-pointer">
+                            <input type="checkbox" checked={selected.includes(option)} onChange={() => handleToggle(option)} className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary" />
+                            <span>{option}</span>
+                        </label>
+                    ))}
+                </div>
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClear(['category'])}>Clear</Button>
+                    <Button className="!px-3 !py-1 text-xs" onClick={() => onApply({ category: selected })}>Apply</Button>
+                </div>
+            </div>
+        )
+    }
+
+    if (column === 'density') {
+        const [value, setValue] = useState(filters.densitySearch || '');
+        return (
+            <div className="space-y-2">
+                <Input label="" placeholder="Search density..." type="text" value={value} onChange={e => setValue(e.target.value)} />
+                <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClear(['densitySearch'])}>Clear</Button>
+                    <Button className="!px-3 !py-1 text-xs" onClick={() => onApply({ densitySearch: value })}>Apply</Button>
+                </div>
+            </div>
+        )
+    }
+    
+    if (column === 'cost') {
+        const [min, setMin] = useState(filters.minCost ?? '');
+        const [max, setMax] = useState(filters.maxCost ?? '');
+        
+        const handleApply = () => {
+            onApply({
+                minCost: min !== '' ? parseFloat(min) : undefined,
+                maxCost: max !== '' ? parseFloat(max) : undefined,
+            });
+        }
+        
+        return (
+             <div className="space-y-2">
+                <Input label="Min" type="number" value={min} onChange={e => setMin(e.target.value)} />
+                <Input label="Max" type="number" value={max} onChange={e => setMax(e.target.value)} />
+                 <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClear(['minCost', 'maxCost'])}>Clear</Button>
+                    <Button className="!px-3 !py-1 text-xs" onClick={handleApply}>Apply</Button>
+                </div>
+            </div>
+        )
+    }
+
+    // Default text filter
+    const [value, setValue] = useState(filters[column] || '');
+    return (
+        <div className="space-y-2">
+            <Input label="" placeholder={`Search ${column}...`} value={value} onChange={e => setValue(e.target.value)} />
+            <div className="flex justify-end gap-2 pt-2 border-t border-border">
+                <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClear([column])}>Clear</Button>
+                <Button className="!px-3 !py-1 text-xs" onClick={() => onApply({ [column]: value })}>Apply</Button>
+            </div>
+        </div>
+    )
+}

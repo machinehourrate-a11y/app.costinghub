@@ -1,3 +1,4 @@
+
 // This file is self-contained and does not require auto-generated Supabase types.
 
 export type Json =
@@ -144,6 +145,14 @@ export interface BilletShapeParameters {
   outerHeight?: number; // mm for Rectangle Tube
 }
 
+export interface SurfaceTreatment {
+  id: string;
+  name: string;
+  cost: number;
+  unit: 'per_kg' | 'per_area';
+  based_on?: 'raw_weight' | 'finished_weight';
+}
+
 export interface MachiningInput {
   // Metadata
   id: string;
@@ -158,6 +167,7 @@ export interface MachiningInput {
   unitSystem: 'Metric' | 'Imperial';
 
   // Material Details
+  materialCategory: string;
   materialType: string;
 
   // Raw Material Geometry & Weight
@@ -166,13 +176,13 @@ export interface MachiningInput {
   billetShapeParameters?: BilletShapeParameters;
   rawMaterialWeightKg: number;
   finishedPartWeightKg: number;
+  partSurfaceAreaM2: number;
   
   // Raw Material Cost Buildup
   materialCostPerKg: number; 
   materialDensityGcm3: number; 
   transportCostPerKg: number;
-  surfaceTreatmentName: string;
-  surfaceTreatmentCostPerKg: number;
+  surfaceTreatments: SurfaceTreatment[];
 
   // Machining Operations & Setup
   setups: Setup[]; 
@@ -188,6 +198,7 @@ export interface MachiningResult {
   totalMaterialCostPerKg: number;
   rawMaterialPartCost: number;
   materialCost: number; 
+  surfaceTreatmentCost: number;
   
   // Time Analysis
   operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[];
@@ -253,6 +264,16 @@ export interface SettingsPageProps {
   onUpdateUser: (user: Partial<User>) => void;
 }
 
+export interface MaterialsPageProps {
+  materials: MaterialMasterItem[];
+  user: User;
+  onAddMaterial: (material: MaterialMasterItem) => void;
+  onUpdateMaterial: (material: MaterialMasterItem) => void;
+  onDeleteMaterial: (materialId: string) => void;
+  onAddMultipleMaterials: (materials: Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[]) => void;
+  onDeleteMultipleMaterials: (materialIds: string[]) => void;
+}
+
 export interface MachineLibraryPageProps {
   machines: Machine[];
   user: User;
@@ -260,6 +281,17 @@ export interface MachineLibraryPageProps {
   onUpdateMachine: (machine: Machine) => void;
   onDeleteMachine: (machineId: string) => void;
   onAddMultipleMachines: (machines: Omit<Machine, 'id' | 'user_id' | 'created_at'>[]) => void;
+  onDeleteMultipleMachines: (machineIds: string[]) => void;
+}
+
+export interface ProcessLibraryPageProps {
+  processes: Process[];
+  user: User;
+  onAddProcess: (process: Process) => void;
+  onUpdateProcess: (process: Process) => void;
+  onDeleteProcess: (processId: string) => void;
+  onAddMultipleProcesses: (processes: Omit<Process, 'id' | 'user_id' | 'created_at'>[]) => void;
+  onDeleteMultipleProcesses: (processIds: string[]) => void;
 }
 
 // Props for CalculatorPage, includes machines
@@ -287,22 +319,6 @@ export interface DashboardPageProps {
   onUpgrade: () => void;
   isSuperAdmin: boolean;
   theme: 'light' | 'dark';
-}
-
-export interface OperationItemProps {
-  setup: Setup;
-  op: Operation;
-  isMetric: boolean;
-  getDisplayValue: (metricValue: number, metricUnit: string) => number;
-  getMetricValue: (displayValue: number, imperialUnit: string) => number;
-  updateOperation: (setupId: string, operationId: string, field: keyof Operation, value: any) => void;
-  updateOperationParameter: (setupId: string, operationId: string, param: ProcessParameter, value: string) => void;
-  removeOperation: (setupId: string, operationId: string) => void;
-  handleOpenToolModal: (setupId: string, operationId: string) => void;
-  processes: Process[];
-  tools: Tool[];
-  machines: Machine[];
-  formatCurrency: (value: number) => string;
 }
 
 export interface ResultsPageProps {
@@ -348,6 +364,7 @@ export interface ToolLibraryPageProps {
   onUpdateTool: (tool: Tool) => void;
   onDeleteTool: (toolId: string) => void;
   onAddMultipleTools: (tools: Omit<Tool, 'id' | 'user_id' | 'created_at'>[]) => void;
+  onDeleteMultipleTools: (toolIds: string[]) => void;
 }
 
 export type GeminiSuggestion = {

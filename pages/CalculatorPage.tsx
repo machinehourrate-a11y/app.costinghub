@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, Tool } from '../types';
+import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment } from '../types';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
-import { calculateMachiningCosts, calculateBilletWeight } from '../services/calculationService';
+import { calculateMachiningCosts, calculateBilletWeight, calculateOperationTime } from '../services/calculationService';
 import { RAW_MATERIAL_PROCESSES, BILLET_SHAPES, MACHINE_TYPES } from '../constants';
-import { ToolSelectionModal } from '../components/ToolSelectionModal';
-import { OperationItem } from '../components/OperationItem';
+import { OperationModal } from '../components/OperationModal';
 import { DisplayField } from '../components/ui/DisplayField';
 import { CloseIcon } from '../components/ui/CloseIcon';
 
@@ -17,6 +16,7 @@ const uuid = () => `id_${Math.random().toString(36).substring(2, 9)}`;
 const MM_TO_IN = 1 / 25.4;
 const M_MIN_TO_SFM = 3.28084;
 const KG_TO_LB = 2.20462;
+const M2_TO_FT2 = 10.7639;
 
 const INITIAL_INPUT: MachiningInput = {
   id: '',
@@ -29,6 +29,7 @@ const INITIAL_INPUT: MachiningInput = {
   createdAt: new Date().toISOString(),
   partImage: '',
   unitSystem: 'Metric',
+  materialCategory: '',
   materialType: '',
   materialCostPerKg: 0,
   materialDensityGcm3: 0,
@@ -37,9 +38,9 @@ const INITIAL_INPUT: MachiningInput = {
   billetShapeParameters: { length: 100, width: 100, height: 50 },
   rawMaterialWeightKg: 0,
   finishedPartWeightKg: 0,
+  partSurfaceAreaM2: 0,
   transportCostPerKg: 0,
-  surfaceTreatmentName: 'None',
-  surfaceTreatmentCostPerKg: 0,
+  surfaceTreatments: [],
   setups: [],
   laborRatePerHour: 50,
   overheadRatePercentage: 150,
@@ -56,9 +57,13 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   const [formData, setFormData] = useState<MachiningInput>(INITIAL_INPUT);
   const [errors, setErrors] = useState<{ [key: string]: any }>({});
   const [isUploading, setIsUploading] = useState(false);
-  const [toolModalState, setToolModalState] = useState<{isOpen: boolean; setupId: string | null; operationId: string | null}>({isOpen: false, setupId: null, operationId: null});
+  const [operationModalState, setOperationModalState] = useState<{
+    isOpen: boolean;
+    setupId: string | null;
+    operation: Operation | null;
+  }>({ isOpen: false, setupId: null, operation: null });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'unsaved' | 'saving'>('idle');
-  
+
   const isInitialMount = useRef(true);
   const debounceTimeout = useRef<any>(null);
   
@@ -77,8 +82,16 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   
   useEffect(() => {
     if (existingCalculation) {
-      // Ensure unit system is set, default to Metric if not present
-      setFormData({ unitSystem: 'Metric', ...existingCalculation.inputs });
+      // Merge with initial state to ensure all fields, especially arrays like 'setups' and 'surfaceTreatments', are present.
+      // This prevents errors when loading older calculations that may not have these fields.
+      setFormData({
+        ...INITIAL_INPUT,
+        ...existingCalculation.inputs,
+        setups: existingCalculation.inputs.setups || [],
+        surfaceTreatments: existingCalculation.inputs.surfaceTreatments || [],
+        // Ensure unit system from existing calc is preserved, defaulting to Metric.
+        unitSystem: existingCalculation.inputs.unitSystem || 'Metric',
+      });
       setSaveStatus('saved');
     } else {
       const newCalcNumber = `${user?.calcPrefix || 'EST-'}${user?.calcNextNumber || 101}`;
@@ -148,22 +161,44 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
             if (unit === 'mm' || unit === 'mm/rev' || unit === 'mm/min') return value * MM_TO_IN;
             if (unit === 'm/min') return value * M_MIN_TO_SFM;
             if (unit === 'kg') return value * KG_TO_LB;
+            if (unit === 'm²') return value * M2_TO_FT2;
         } else { // from Imperial
             if (unit === 'in' || unit === 'in/rev' || unit === 'in/min') return value / MM_TO_IN;
             if (unit === 'sfm') return value / M_MIN_TO_SFM;
             if (unit === 'lb') return value / KG_TO_LB;
+            if (unit === 'ft²') return value / M2_TO_FT2;
         }
         return value;
     }, []);
 
     const getDisplayValue = useCallback((metricValue: number, metricUnit: string) => {
         if (isMetric || !metricUnit) return metricValue;
+        
+        let imperialUnit;
+        switch (metricUnit) {
+            case 'mm': case 'mm/rev': case 'mm/min': imperialUnit = 'in'; break;
+            case 'm/min': imperialUnit = 'sfm'; break;
+            case 'kg': imperialUnit = 'lb'; break;
+            case 'm²': imperialUnit = 'ft²'; break;
+            default: imperialUnit = metricUnit;
+        }
+
         const imperialValue = convertValue(metricValue, metricUnit, 'Imperial');
         return parseFloat(imperialValue.toPrecision(4));
     }, [isMetric, convertValue]);
 
-    const getMetricValue = useCallback((displayValue: number, imperialUnit: string) => {
-        if (isMetric || !imperialUnit) return displayValue;
+    const getMetricValue = useCallback((displayValue: number, metricUnit: string) => {
+        if (isMetric) return displayValue;
+
+        let imperialUnit;
+         switch (metricUnit) {
+            case 'mm': case 'mm/rev': case 'mm/min': imperialUnit = 'in'; break;
+            case 'm/min': imperialUnit = 'sfm'; break;
+            case 'kg': imperialUnit = 'lb'; break;
+            case 'm²': imperialUnit = 'ft²'; break;
+            default: imperialUnit = metricUnit;
+        }
+
         return convertValue(displayValue, imperialUnit, 'Metric');
     }, [isMetric, convertValue]);
 
@@ -194,14 +229,10 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     if (selectedMaterial) {
       const properties = selectedMaterial.properties as { [key: string]: MaterialProperty };
       
-      // Robustly find property keys, ignoring surrounding whitespace and units in parentheses.
       const findProperty = (baseName: string): MaterialProperty | undefined => {
         for (const key in properties) {
-            // Clean the key by trimming and removing unit specifiers like (g/cm³)
             const cleanKey = key.trim().replace(/\s*\([^)]+\)/, '').trim();
-            if (cleanKey === baseName) {
-                return properties[key];
-            }
+            if (cleanKey === baseName) return properties[key];
         }
         return undefined;
       };
@@ -209,15 +240,14 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       const densityProp = findProperty('Density');
       const costProp = findProperty('Cost Per Kg');
 
-      const densityValue = densityProp?.value ?? 0;
-      const costValue = costProp?.value ?? 0;
-
       setFormData(prev => ({
         ...prev,
         materialType: selectedMaterial.id,
-        materialCostPerKg: parseFloat(costValue as string) || 0,
-        materialDensityGcm3: parseFloat(densityValue as string) || 0,
+        materialCostPerKg: parseFloat(costProp?.value as string) || 0,
+        materialDensityGcm3: parseFloat(densityProp?.value as string) || 0,
       }));
+    } else {
+        setFormData(prev => ({...prev, materialType: ''}));
     }
   };
 
@@ -235,7 +265,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   
   const handleBilletParamChange = (paramName: keyof BilletShapeParameters, value: string) => {
     const displayValue = parseFloat(value) || 0;
-    const metricValue = getMetricValue(displayValue, 'in'); // Billet dimensions are always length
+    const metricValue = getMetricValue(displayValue, 'mm'); // Billet dimensions are always length
     
     setFormData(prev => ({
       ...prev,
@@ -248,8 +278,43 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
   const handleWeightInputChange = (fieldName: 'rawMaterialWeightKg' | 'finishedPartWeightKg', value: string) => {
     const displayValue = parseFloat(value) || 0;
-    const metricValue = getMetricValue(displayValue, 'lb');
+    const metricValue = getMetricValue(displayValue, 'kg');
     setFormData(prev => ({...prev, [fieldName]: metricValue }));
+  };
+  
+  const handleSurfaceAreaChange = (value: string) => {
+    const displayValue = parseFloat(value) || 0;
+    const metricValue = getMetricValue(displayValue, 'm²');
+    setFormData(prev => ({...prev, partSurfaceAreaM2: metricValue}));
+  };
+  
+  // --- Surface Treatment Handlers ---
+  const addSurfaceTreatment = () => {
+    const newTreatment: SurfaceTreatment = { id: uuid(), name: '', cost: 0, unit: 'per_kg', based_on: 'finished_weight' };
+    setFormData(prev => ({...prev, surfaceTreatments: [...prev.surfaceTreatments, newTreatment]}));
+  };
+
+  const updateSurfaceTreatment = (index: number, field: keyof SurfaceTreatment, value: string | number) => {
+    setFormData(prev => {
+        const newTreatments = [...prev.surfaceTreatments];
+        const treatmentToUpdate = { ...newTreatments[index] };
+
+        (treatmentToUpdate as any)[field] = value;
+        
+        // When unit is changed to 'per_kg', set a default 'based_on'
+        if (field === 'unit' && value === 'per_kg') {
+          if (!treatmentToUpdate.based_on) {
+            treatmentToUpdate.based_on = 'finished_weight';
+          }
+        }
+
+        newTreatments[index] = treatmentToUpdate;
+        return {...prev, surfaceTreatments: newTreatments};
+    });
+  };
+
+  const removeSurfaceTreatment = (id: string) => {
+    setFormData(prev => ({...prev, surfaceTreatments: prev.surfaceTreatments.filter(t => t.id !== id)}));
   };
 
   // --- Setup and Operation Handlers ---
@@ -269,110 +334,58 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       updateSetupField(setupId, 'efficiency', percentage / 100);
   }
 
-  const addOperation = (setupId: string) => {
-    const setup = formData.setups.find(s => s.id === setupId);
-    if (!setup?.machineId) {
-        alert("Please select a machine for this setup before adding operations.");
-        return;
-    }
-    const machine = machines.find(m => m.id === setup.machineId);
-    if (!machine) return;
+    const handleOpenOperationModal = useCallback((setupId: string, operation: Operation | null) => {
+        const setup = formData.setups.find(s => s.id === setupId);
+        if (!setup?.machineId) {
+            alert("Please select a machine for this setup before adding operations.");
+            return;
+        }
+        const machine = machines.find(m => m.id === setup.machineId);
+        const compatibleProcesses = machine ? processes.filter(p => p.compatibleMachineTypes.includes(machine.machineType)) : [];
 
-    const availableProcesses = processes.filter(p => p.compatibleMachineTypes.includes(machine.machineType));
-    if(availableProcesses.length === 0) {
-        alert("The selected machine has no compatible processes defined.");
-        return;
-    }
-    
-    const firstProcess = availableProcesses[0];
-    const processParams = firstProcess.parameters;
+        if (!operation && compatibleProcesses.length === 0) {
+            alert("The selected machine has no compatible processes defined. Please choose another machine or add processes to the library.");
+            return;
+        }
+        setOperationModalState({ isOpen: true, setupId, operation });
+    }, [formData.setups, machines, processes]);
 
-    if (!Array.isArray(processParams)) {
-        alert(`Cannot add operation: The default process "${firstProcess.name}" is not configured correctly. Please check its parameters in the Process Master.`);
-        return;
-    }
+    const handleCloseOperationModal = useCallback(() => {
+        setOperationModalState({ isOpen: false, setupId: null, operation: null });
+    }, []);
 
-    const newOperation: Operation = {
-      id: uuid(),
-      processName: firstProcess.name,
-      parameters: (processParams as ProcessParameter[]).reduce((acc, p) => ({ ...acc, [p.name]: 0 }), {})
-    };
-    setFormData(prev => ({ ...prev, setups: prev.setups.map(s => s.id === setupId ? { ...s, operations: [...s.operations, newOperation] } : s) }));
-  };
-  
+    const handleSaveOperation = useCallback((setupId: string, operation: Operation) => {
+        setFormData(prev => ({
+            ...prev,
+            setups: prev.setups.map(s => {
+                if (s.id === setupId) {
+                    const opExists = s.operations.some(o => o.id === operation.id);
+                    const newOps = opExists
+                        ? s.operations.map(o => o.id === operation.id ? operation : o)
+                        : [...s.operations, operation];
+                    return { ...s, operations: newOps };
+                }
+                return s;
+            })
+        }));
+        handleCloseOperationModal();
+    }, [handleCloseOperationModal]);
+
   const removeOperation = (setupId: string, operationId: string) => {
     setFormData(prev => ({ ...prev, setups: prev.setups.map(s => s.id === setupId ? { ...s, operations: s.operations.filter(o => o.id !== operationId) } : s) }));
   };
-
-  const updateOperation = (setupId: string, operationId: string, field: keyof Operation, value: any) => {
-    setFormData(prev => ({
-        ...prev,
-        setups: prev.setups.map(setup =>
-            setup.id === setupId
-                ? { ...setup, operations: setup.operations.map(op => {
-                        if (op.id === operationId) {
-                            const updatedOp = { ...op, [field]: value };
-                            if (field === 'processName') {
-                                const processDef = processes.find(p => p.name === value);
-                                const processParams = (processDef && Array.isArray(processDef.parameters)) ? processDef.parameters as ProcessParameter[] : [];
-                                updatedOp.parameters = processParams ? processParams.reduce((acc, p) => ({ ...acc, [p.name]: op.parameters[p.name] || 0 }), {}) : {};
-                            }
-                            return updatedOp;
-                        }
-                        return op;
-                    }),
-                } : setup ),
-    }));
-  };
-
-  const updateOperationParameter = (setupId: string, operationId: string, param: ProcessParameter, value: string) => {
-    const displayValue = parseFloat(value) || 0;
-    const metricValue = getMetricValue(displayValue, param.imperialUnit || param.unit);
-
-    setFormData(prev => ({
-      ...prev,
-      setups: prev.setups.map(setup =>
-        setup.id === setupId ? { ...setup, operations: setup.operations.map(op =>
-                op.id === operationId ? { ...op, parameters: { ...op.parameters, [param.name]: metricValue } } : op
-              ), } : setup ),
-    }));
-  };
-
-  const handleOpenToolModal = (setupId: string, operationId: string) => {
-    setToolModalState({ isOpen: true, setupId, operationId });
-  };
   
-  const handleCloseToolModal = () => {
-    setToolModalState({ isOpen: false, setupId: null, operationId: null });
-  };
-
-  const handleToolSelect = (tool: Tool) => {
-    const { setupId, operationId } = toolModalState;
-    if (!setupId || !operationId) return;
-
-    setFormData(prev => ({
-      ...prev,
-      setups: prev.setups.map(setup => {
-        if (setup.id !== setupId) return setup;
-        return {
-          ...setup,
-          operations: setup.operations.map(op => {
-            if (op.id !== operationId) return op;
-            
-            return { ...op, toolId: tool.id, toolName: tool.name };
-          }),
-        };
-      }),
-    }));
-
-    handleCloseToolModal();
+  const formatParameters = (op: Operation, process: Process | undefined): string => {
+    if (!process || !Array.isArray(process.parameters)) return 'N/A';
+    const params = process.parameters as ProcessParameter[];
+    return params
+      .slice(0, 3) // Show first 3 params for brevity
+      .map(p => `${p.label.split('(')[0].trim()}: ${getDisplayValue(op.parameters[p.name] || 0, p.unit).toFixed(1)} ${isMetric ? p.unit : p.imperialUnit || p.unit}`)
+      .join(' | ');
   };
 
   // --- Submission ---
-  const validateForm = () => {
-    // Simplified validation for brevity
-    return true;
-  };
+  const validateForm = () => { return true; };
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -387,38 +400,47 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   const selectedBilletShape = useMemo(() => BILLET_SHAPES.find(s => s.name === formData.billetShape), [formData.billetShape]);
   const selectedMaterial = useMemo(() => materials.find(m => m.id === formData.materialType), [materials, formData.materialType]);
   
-  const totalRawMaterialCostPerKg = useMemo(() => (formData.materialCostPerKg || 0) + (formData.transportCostPerKg || 0) + (formData.surfaceTreatmentCostPerKg || 0), [formData.materialCostPerKg, formData.transportCostPerKg, formData.surfaceTreatmentCostPerKg]);
-
+  const totalRawMaterialCostPerKg = useMemo(() => (formData.materialCostPerKg || 0) + (formData.transportCostPerKg || 0), [formData.materialCostPerKg, formData.transportCostPerKg]);
   const rawMaterialCostPerPart = useMemo(() => formData.rawMaterialWeightKg * totalRawMaterialCostPerKg, [formData.rawMaterialWeightKg, totalRawMaterialCostPerKg]);
   
-  const groupedMaterials = useMemo(() => {
-    const groups: Record<string, MaterialMasterItem[]> = {};
-    materials.forEach(material => {
-        const category = material.category || 'Other';
-        if (!groups[category]) {
-            groups[category] = [];
+  const surfaceTreatmentCostPerPart = useMemo(() => {
+    return formData.surfaceTreatments.reduce((total, treatment) => {
+        if (treatment.unit === 'per_kg') {
+            const weightToUse = treatment.based_on === 'raw_weight' ? formData.rawMaterialWeightKg : formData.finishedPartWeightKg;
+            return total + ((treatment.cost || 0) * weightToUse);
         }
-        groups[category].push(material);
-    });
-    // Also sort materials within each group by name
-    for (const category in groups) {
-        groups[category].sort((a, b) => a.name.localeCompare(b.name));
-    }
-    // Sort the categories themselves
-    return Object.entries(groups).sort(([catA], [catB]) => catA.localeCompare(catB));
-  }, [materials]);
+        if (treatment.unit === 'per_area') {
+            return total + ((treatment.cost || 0) * formData.partSurfaceAreaM2);
+        }
+        return total;
+    }, 0);
+  }, [formData.surfaceTreatments, formData.rawMaterialWeightKg, formData.finishedPartWeightKg, formData.partSurfaceAreaM2]);
+
+  const materialCategories = useMemo(() => Array.from(new Set(materials.map(m => m.category))).sort(), [materials]);
+  const filteredMaterialGrades = useMemo(() => {
+    if (!formData.materialCategory) return [];
+    return materials.filter(m => m.category === formData.materialCategory).sort((a,b) => a.name.localeCompare(b.name));
+  }, [materials, formData.materialCategory]);
+
 
   return (
     <div className="w-full mx-auto animate-fade-in">
-        <ToolSelectionModal
-            isOpen={toolModalState.isOpen}
-            onClose={handleCloseToolModal}
-            onSelect={handleToolSelect}
-            tools={tools}
-            machineType={
-                machines.find(m => m.id === formData.setups.find(s => s.id === toolModalState.setupId)?.machineId)?.machineType || ''
-            }
-        />
+        {operationModalState.isOpen && operationModalState.setupId && (
+            <OperationModal
+                isOpen={operationModalState.isOpen}
+                onClose={handleCloseOperationModal}
+                onSave={handleSaveOperation}
+                setup={formData.setups.find(s => s.id === operationModalState.setupId)!}
+                operationToEdit={operationModalState.operation}
+                processes={processes}
+                tools={tools}
+                machines={machines}
+                isMetric={isMetric}
+                getDisplayValue={getDisplayValue}
+                getMetricValue={getMetricValue}
+                formatCurrency={formatCurrency}
+            />
+        )}
         <main>
             <form onSubmit={handleSubmit} className="space-y-8">
                 {/* Part Details */}
@@ -431,14 +453,19 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <Input label="Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} error={errors.partNumber} />
                         <Input label="Part Name" name="partName" value={formData.partName} onChange={handleInputChange} error={errors.partName} />
                         <Input label="Revision" name="revision" value={formData.revision} onChange={handleInputChange} />
-                        <Select label="Material Grade" name="materialType" value={formData.materialType} onChange={handleMaterialChange} error={errors.materialType}>
-                            <option value="">Select a material...</option>
-                            {groupedMaterials.map(([category, materialsInCategory]) => (
-                                <optgroup key={category} label={category}>
-                                    {materialsInCategory.map(m => (
-                                        <option key={m.id} value={m.id}>{m.name}</option>
-                                    ))}
-                                </optgroup>
+                        <Select label="Material Category" name="materialCategory" value={formData.materialCategory} onChange={(e) => {
+                            handleInputChange(e);
+                            setFormData(prev => ({ ...prev, materialType: '' }));
+                          }}>
+                            <option value="">Select a category...</option>
+                            {materialCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </Select>
+                        <Select label="Material Grade" name="materialType" value={formData.materialType} onChange={handleMaterialChange} error={errors.materialType} disabled={!formData.materialCategory}>
+                            <option value="">Select a grade...</option>
+                            {filteredMaterialGrades.map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
                             ))}
                         </Select>
                         <Input label="Annual Volume" name="annualVolume" type="number" value={formData.annualVolume} onChange={handleInputChange} error={errors.annualVolume} unit="parts/yr" />
@@ -504,6 +531,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <Input label="Raw Material Weight" name="rawMaterialWeightKg" type="number" step="any" value={getDisplayValue(formData.rawMaterialWeightKg, 'kg')} onChange={(e) => handleWeightInputChange('rawMaterialWeightKg', e.target.value)} unit={isMetric ? "kg" : "lb"} />
                       )}
                        <Input label="Finished Part Weight" name="finishedPartWeightKg" type="number" step="any" value={getDisplayValue(formData.finishedPartWeightKg, 'kg')} onChange={(e) => handleWeightInputChange('finishedPartWeightKg', e.target.value)} error={errors.finishedPartWeightKg} unit={isMetric ? "kg" : "lb"} />
+                       <Input label="Part Surface Area" name="partSurfaceAreaM2" type="number" step="any" value={getDisplayValue(formData.partSurfaceAreaM2, 'm²')} onChange={(e) => handleSurfaceAreaChange(e.target.value)} error={errors.partSurfaceAreaM2} unit={isMetric ? "m²" : "ft²"} />
                     </div>
                 </Card>
 
@@ -515,13 +543,12 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <DisplayField label="Density" value={formData.materialDensityGcm3} unit="g/cm³" />
                         <DisplayField label="Material Cost" value={formData.materialCostPerKg} unit={`${currencySymbol}/kg`} />
                         <Input label="Transport Cost" name="transportCostPerKg" type="number" step="any" value={formData.transportCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
-                        <Input label="Surface Treatment" name="surfaceTreatmentName" value={formData.surfaceTreatmentName} onChange={handleInputChange} />
-                        <Input label="Treatment Cost" name="surfaceTreatmentCostPerKg" type="number" step="any" value={formData.surfaceTreatmentCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
                         <DisplayField label="Total Raw Material Cost" value={totalRawMaterialCostPerKg.toFixed(2)} unit={`${currencySymbol}/kg`} />
                         <DisplayField label="Raw Material Cost / Part" value={formatCurrency(rawMaterialCostPerPart)} />
+                        <DisplayField label="Surface Treatment Cost / Part" value={formatCurrency(surfaceTreatmentCostPerPart)} />
                     </div>
                 </Card>
-                
+
                 {/* Machining Setups & Operations */}
                 <Card>
                     <div className="flex justify-between items-center border-b border-border pb-3 mb-6">
@@ -529,7 +556,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <Button type="button" onClick={addSetup}>+ Add Setup</Button>
                     </div>
                     <div className="space-y-6">
-                        {formData.setups.map((setup, sIndex) => {
+                        {formData.setups.map((setup) => {
                              const selectedMachine = machines.find(m => m.id === setup.machineId);
                              
                              return (
@@ -573,33 +600,84 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                     <CloseIcon />
                                 </button>
                                 
-                                <div className="pl-6 mt-6 border-t border-border pt-4">
+                                <div className="pl-2 mt-6 border-t border-border pt-4">
                                     <h4 className="text-lg font-semibold text-primary mb-4">Operations</h4>
-                                    <div className="space-y-4">
-                                      {setup.operations.map((op) => (
-                                          <OperationItem
-                                              key={op.id}
-                                              setup={setup}
-                                              op={op}
-                                              isMetric={isMetric}
-                                              getDisplayValue={getDisplayValue}
-                                              getMetricValue={getMetricValue}
-                                              updateOperation={updateOperation}
-                                              updateOperationParameter={updateOperationParameter}
-                                              removeOperation={removeOperation}
-                                              handleOpenToolModal={handleOpenToolModal}
-                                              processes={processes}
-                                              tools={tools}
-                                              machines={machines}
-                                              formatCurrency={formatCurrency}
-                                          />
-                                      ))}
+                                    <div className="overflow-x-auto">
+                                        {setup.operations.length > 0 ? (
+                                            <table className="min-w-full divide-y divide-border text-sm">
+                                                <thead className="bg-surface/50">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">#</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Operation</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Parameters</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Cycle Time</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Cost</th>
+                                                        <th className="px-3 py-2 text-right font-medium text-text-secondary">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="bg-surface divide-y divide-border">
+                                                    {setup.operations.map((op, opIndex) => {
+                                                        const processDef = processes.find(p => p.name === op.processName);
+                                                        const selectedTool = tools.find(t => t.id === op.toolId);
+                                                        const time = calculateOperationTime(op, processDef!, selectedTool || null) / (setup.efficiency || 1);
+                                                        const cost = selectedMachine ? (time / 60) * selectedMachine.hourlyRate : 0;
+                                                        return (
+                                                            <tr key={op.id} className="hover:bg-background/40">
+                                                                <td className="px-3 py-2 text-text-secondary">{opIndex + 1}</td>
+                                                                <td className="px-3 py-2 font-semibold text-text-primary">{op.processName}</td>
+                                                                <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{selectedTool?.name || 'N/A'}</td>
+                                                                <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{formatParameters(op, processDef)}</td>
+                                                                <td className="px-3 py-2 text-text-primary font-medium">{time.toFixed(2)} min</td>
+                                                                <td className="px-3 py-2 text-green-500 font-medium">{formatCurrency(cost)}</td>
+                                                                <td className="px-3 py-2 text-right space-x-2">
+                                                                    <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => handleOpenOperationModal(setup.id, op)}>Edit</Button>
+                                                                    <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs text-red-500 hover:bg-red-500/10" onClick={() => removeOperation(setup.id, op.id)}>Delete</Button>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        ) : (
+                                            <p className="text-center text-text-muted py-4">No operations added for this setup.</p>
+                                        )}
                                     </div>
-                                    <Button type="button" variant="secondary" onClick={() => addOperation(setup.id)} className="mt-4" disabled={!setup.machineId}>+ Add Operation</Button>
+                                    <Button type="button" variant="secondary" onClick={() => handleOpenOperationModal(setup.id, null)} className="mt-4" disabled={!setup.machineId}>+ Add Operation</Button>
                                 </div>
                             </div>
                         )})}
                     </div>
+                </Card>
+                
+                {/* Surface Treatment - Moved after Machining */}
+                <Card>
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Surface Treatment</h2>
+                    <div className="space-y-4">
+                        {formData.surfaceTreatments.map((treatment, index) => (
+                            <div key={treatment.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-background/50 p-3 rounded-lg">
+                                <Input label="Treatment Name" value={treatment.name} onChange={e => updateSurfaceTreatment(index, 'name', e.target.value)} />
+                                <Input label="Cost" type="number" step="any" value={treatment.cost} onChange={e => updateSurfaceTreatment(index, 'cost', parseFloat(e.target.value) || 0)} />
+                                <Select label="Unit" value={treatment.unit} onChange={e => updateSurfaceTreatment(index, 'unit', e.target.value)}>
+                                    <option value="per_kg">per kg</option>
+                                    <option value="per_area">per m²</option>
+                                </Select>
+                                {treatment.unit === 'per_kg' ? (
+                                    <Select label="Based On" value={treatment.based_on || 'finished_weight'} onChange={e => updateSurfaceTreatment(index, 'based_on', e.target.value)}>
+                                        <option value="finished_weight">Finished Weight</option>
+                                        <option value="raw_weight">Raw Weight</option>
+                                    </Select>
+                                ) : (
+                                    <div /> // Placeholder to maintain grid alignment
+                                )}
+                                <Button type="button" variant="secondary" onClick={() => removeSurfaceTreatment(treatment.id)} className="text-red-500 hover:bg-red-500/10 h-10 self-end">
+                                    Remove
+                                </Button>
+                            </div>
+                        ))}
+                        {formData.surfaceTreatments.length === 0 && <p className="text-text-muted text-center py-4">No surface treatments added.</p>}
+                    </div>
+                    <Button type="button" variant="secondary" onClick={addSurfaceTreatment} className="mt-4">+ Add Treatment</Button>
                 </Card>
 
                 {/* Labor & Overhead */}

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   const [materials, setMaterials] = useState<MaterialMasterItem[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
+  const [processes, setProcesses] = useState<Process[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscribers, setSubscribers] = useState<SubscriberInfo[]>([]);
   
@@ -68,21 +70,23 @@ const App: React.FC = () => {
         }
     }
     
-    const [calcRes, matRes, machRes, toolRes] = await Promise.all([
+    const [calcRes, matRes, machRes, toolRes, procRes] = await Promise.all([
       supabase.from('calculations').select('*'),
       supabase.from('materials').select('*'),
       supabase.from('machines').select('*'),
       supabase.from('tools').select('*'),
+      supabase.from('processes').select('*'),
     ]);
 
     if (calcRes.error) throw calcRes.error;
     if (matRes.error) throw matRes.error;
     if (machRes.error) throw machRes.error;
     if (toolRes.error) throw toolRes.error;
+    if (procRes.error) throw procRes.error;
 
-    setCalculations(calcRes.data as unknown as Calculation[]);
+    setCalculations((calcRes.data as unknown as Calculation[]) || []);
     
-    const userMaterials = matRes.data as MaterialMasterItem[];
+    const userMaterials = (matRes.data as MaterialMasterItem[]) || [];
     const combinedMaterials = [...INITIAL_MATERIALS_MASTER];
     userMaterials.forEach(um => {
       if (!INITIAL_MATERIALS_MASTER.some(dm => dm.id === um.id)) {
@@ -91,7 +95,7 @@ const App: React.FC = () => {
     });
     setMaterials(combinedMaterials);
 
-    const userMachines = machRes.data as Machine[];
+    const userMachines = (machRes.data as Machine[]) || [];
     const combinedMachines = [...DEFAULT_MACHINES_MASTER];
     userMachines.forEach(um => {
       if (!DEFAULT_MACHINES_MASTER.some(dm => dm.id === um.id)) {
@@ -100,7 +104,7 @@ const App: React.FC = () => {
     });
     setMachines(combinedMachines);
 
-    const userTools = toolRes.data as Tool[];
+    const userTools = (toolRes.data as Tool[]) || [];
     const combinedTools = [...DEFAULT_TOOLS_MASTER];
     userTools.forEach(ut => {
       if (!DEFAULT_TOOLS_MASTER.some(dt => dt.id === ut.id)) {
@@ -108,6 +112,15 @@ const App: React.FC = () => {
       }
     });
     setTools(combinedTools);
+
+    const userProcesses = (procRes.data as Process[]) || [];
+    const combinedProcesses = [...DEFAULT_PROCESSES];
+    userProcesses.forEach(up => {
+      if (!DEFAULT_PROCESSES.some(dp => dp.id === up.id)) {
+        combinedProcesses.push(up);
+      }
+    });
+    setProcesses(combinedProcesses);
 
   }, []);
 
@@ -124,7 +137,7 @@ const App: React.FC = () => {
 
     supabase.from('subscription_plans').select('*').then(({ data, error: planError }) => {
       if (planError) setError(`Error loading plans: ${planError.message}`);
-      else setPlans(data as unknown as SubscriptionPlan[]);
+      else setPlans((data as unknown as SubscriptionPlan[]) || []);
     });
 
     return () => subscription.unsubscribe();
@@ -163,6 +176,7 @@ const App: React.FC = () => {
         setMaterials([]);
         setMachines([]);
         setTools([]);
+        setProcesses([]);
         setSubscribers([]);
         return;
       }
@@ -173,7 +187,7 @@ const App: React.FC = () => {
         if (user.email && SUPER_ADMIN_EMAILS.includes(user.email)) {
           const { data: subscribersData, error: subscribersError } = await supabase.rpc('get_subscribers_list');
           if (subscribersError) throw subscribersError;
-          setSubscribers(subscribersData as SubscriberInfo[]);
+          setSubscribers((subscribersData as SubscriberInfo[]) || []);
         }
         
         if (isInitialUserLoad.current) {
@@ -317,7 +331,7 @@ const App: React.FC = () => {
   
   const crudHandler = useCallback(async <T extends {id: string, user_id?: string, created_at?: string}>(
     action: 'add' | 'update' | 'delete',
-    table: 'materials' | 'machines' | 'tools',
+    table: 'materials' | 'machines' | 'tools' | 'processes',
     item: T | string,
     stateSetter: React.Dispatch<React.SetStateAction<T[]>>
   ) => {
@@ -350,21 +364,46 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  const bulkDeleteHandler = useCallback(async <T extends { id: string }>(
+    table: 'materials' | 'machines' | 'tools' | 'processes',
+    ids: string[],
+    stateSetter: React.Dispatch<React.SetStateAction<T[]>>
+  ) => {
+    if (!user || ids.length === 0) return;
+    setError(null);
+
+    const { error: deleteError } = await supabase.from(table).delete().in('id', ids);
+
+    if (deleteError) {
+      setError(deleteError.message);
+    } else {
+      stateSetter(prev => prev.filter(item => !ids.includes(item.id)));
+    }
+  }, [user]);
+
   const handleAddMaterial = (m: MaterialMasterItem) => crudHandler('add', 'materials', m, setMaterials);
   const handleUpdateMaterial = (m: MaterialMasterItem) => crudHandler('update', 'materials', m, setMaterials);
   const handleDeleteMaterial = (id: string) => crudHandler('delete', 'materials', id, setMaterials);
+  const handleDeleteMultipleMaterials = (ids: string[]) => bulkDeleteHandler('materials', ids, setMaterials as any);
 
   const handleAddMachine = (m: Machine) => crudHandler('add', 'machines', m, setMachines);
   const handleUpdateMachine = (m: Machine) => crudHandler('update', 'machines', m, setMachines);
   const handleDeleteMachine = (id: string) => crudHandler('delete', 'machines', id, setMachines);
+  const handleDeleteMultipleMachines = (ids: string[]) => bulkDeleteHandler('machines', ids, setMachines as any);
 
   const handleAddTool = (t: Tool) => crudHandler('add', 'tools', t, setTools);
   const handleUpdateTool = (t: Tool) => crudHandler('update', 'tools', t, setTools);
   const handleDeleteTool = (id: string) => crudHandler('delete', 'tools', id, setTools);
+  const handleDeleteMultipleTools = (ids: string[]) => bulkDeleteHandler('tools', ids, setTools as any);
+
+  const handleAddProcess = (p: Process) => crudHandler('add', 'processes', p, setProcesses);
+  const handleUpdateProcess = (p: Process) => crudHandler('update', 'processes', p, setProcesses);
+  const handleDeleteProcess = (id: string) => crudHandler('delete', 'processes', id, setProcesses);
+  const handleDeleteMultipleProcesses = (ids: string[]) => bulkDeleteHandler('processes', ids, setProcesses as any);
 
   const bulkAddHandler = useCallback(async <T, U>(
     itemsToAdd: T[],
-    table: 'materials' | 'machines' | 'tools',
+    table: 'materials' | 'machines' | 'tools' | 'processes',
     stateSetter: React.Dispatch<React.SetStateAction<U[]>>
   ) => {
     if (!user || itemsToAdd.length === 0) return;
@@ -387,6 +426,7 @@ const App: React.FC = () => {
   const handleAddMultipleMaterials = (items: Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'materials', setMaterials);
   const handleAddMultipleMachines = (items: Omit<Machine, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'machines', setMachines);
   const handleAddMultipleTools = (items: Omit<Tool, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'tools', setTools);
+  const handleAddMultipleProcesses = (items: Omit<Process, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'processes', setProcesses);
   
   const handleAddPlan = async (p: SubscriptionPlan) => {
       const { data, error: addPlanError } = await supabase.from('subscription_plans').insert(p as any).select().single();
@@ -438,17 +478,17 @@ const App: React.FC = () => {
       case 'calculations':
         return <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigate} onEdit={handleEdit} onDelete={handleDeleteCalculation} onViewResults={handleViewResults} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
       case 'calculator':
-        return <CalculatorPage user={user} materials={materials} machines={machines} processes={DEFAULT_PROCESSES} tools={tools} onSave={handleSaveCalculation} onSaveDraft={handleSaveDraft} onAutoSaveDraft={handleAutoSaveDraft} onBack={() => setCurrentView('calculations')} existingCalculation={editingCalculation} />;
+        return <CalculatorPage user={user} materials={materials} machines={machines} processes={processes} tools={tools} onSave={handleSaveCalculation} onSaveDraft={handleSaveDraft} onAutoSaveDraft={handleAutoSaveDraft} onBack={() => setCurrentView('calculations')} existingCalculation={editingCalculation} />;
       case 'results':
         return <ResultsPage user={user} calculation={viewingCalculation} onBack={() => setCurrentView('calculations')} />;
       case 'materials':
-        return <MaterialsPage materials={materials} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} onAddMultipleMaterials={handleAddMultipleMaterials} user={user} />;
+        return <MaterialsPage materials={materials} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} onAddMultipleMaterials={handleAddMultipleMaterials} onDeleteMultipleMaterials={handleDeleteMultipleMaterials} user={user} />;
       case 'machines':
-        return <MachineLibraryPage machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} onAddMultipleMachines={handleAddMultipleMachines} user={user} />;
+        return <MachineLibraryPage machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} onAddMultipleMachines={handleAddMultipleMachines} onDeleteMultipleMachines={handleDeleteMultipleMachines} user={user} />;
       case 'processes':
-        return <ProcessLibraryPage processes={DEFAULT_PROCESSES} />;
+        return <ProcessLibraryPage processes={processes} user={user} onAddProcess={handleAddProcess} onUpdateProcess={handleUpdateProcess} onDeleteProcess={handleDeleteProcess} onAddMultipleProcesses={handleAddMultipleProcesses} onDeleteMultipleProcesses={handleDeleteMultipleProcesses} />;
       case 'toolLibrary':
-        return <ToolLibraryPage user={user} tools={tools} onAddTool={handleAddTool} onUpdateTool={handleUpdateTool} onDeleteTool={handleDeleteTool} onAddMultipleTools={handleAddMultipleTools} />;
+        return <ToolLibraryPage user={user} tools={tools} onAddTool={handleAddTool} onUpdateTool={handleUpdateTool} onDeleteTool={handleDeleteTool} onAddMultipleTools={handleAddMultipleTools} onDeleteMultipleTools={handleDeleteMultipleTools} />;
       case 'settings':
         return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
       case 'subscription':

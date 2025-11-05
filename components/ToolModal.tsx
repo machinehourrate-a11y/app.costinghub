@@ -5,7 +5,7 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS } from '../constants';
-import { suggestTool } from '../services/geminiService';
+import { suggestTool, calculateToolLife } from '../services/geminiService';
 
 interface ToolModalProps {
   tool: Tool | null;
@@ -38,6 +38,7 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
+  const [isCalculatingLife, setIsCalculatingLife] = useState(false);
 
   useEffect(() => {
     setFormData(tool || BLANK_TOOL);
@@ -111,6 +112,18 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
     }
   };
 
+  const handleCalculateLife = async () => {
+    setIsCalculatingLife(true);
+    const life = await calculateToolLife(formData);
+    if (life !== null) {
+      setFormData(prev => ({ ...prev, estimatedLife: life }));
+    } else {
+      // You can add a user-facing error message here if desired
+      console.error("Failed to calculate tool life.");
+    }
+    setIsCalculatingLife(false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const toolToSave: Tool = {
@@ -175,9 +188,40 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
             </div>
             
             <h3 className="text-lg font-semibold text-primary mt-4 border-t border-border pt-4">Commercial Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                 <Input label="Price" name="price" type="number" step="any" value={formData.price ?? ''} onChange={handleInputChange} unit={currency} placeholder="e.g., 85.50" />
-                <Input label="Estimated Life" name="estimatedLife" type="number" step="any" value={formData.estimatedLife ?? ''} onChange={handleInputChange} unit="hours" placeholder="e.g., 50" />
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-1">Estimated Life</label>
+                  <div className="flex items-center space-x-2">
+                    <div className="flex-grow">
+                      <Input
+                        label=""
+                        name="estimatedLife"
+                        type="number"
+                        step="any"
+                        value={formData.estimatedLife ?? ''}
+                        onChange={handleInputChange}
+                        unit="hours"
+                        placeholder="e.g., 50"
+                      />
+                    </div>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={handleCalculateLife}
+                        disabled={isCalculatingLife}
+                        className="!py-2.5 h-10"
+                        title="Calculate with AI"
+                      >
+                        {isCalculatingLife ? (
+                           <svg className="animate-spin h-5 w-5 text-text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                           </svg>
+                        ) : 'AI Calc'}
+                    </Button>
+                  </div>
+                </div>
             </div>
 
             <h3 className="text-lg font-semibold text-primary mt-4 border-t border-border pt-4">Cutting Parameters (Inputs)</h3>

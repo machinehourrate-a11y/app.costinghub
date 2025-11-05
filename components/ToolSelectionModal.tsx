@@ -58,7 +58,7 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">
-      <Card className="max-w-4xl w-full relative">
+      <Card className="max-w-5xl w-full relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-text-muted hover:text-text-primary">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -90,11 +90,11 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
             </div>
         </div>
         <div className="max-h-[60vh] overflow-y-auto border border-border rounded-lg">
-          <table className="min-w-full divide-y divide-border">
+          <table className="min-w-full divide-y divide-border table-fixed">
             <thead className="bg-background/50 sticky top-0">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Tool Name</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Type</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider w-2/5">Tool Name</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider w-1/5">Type</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Diameter (mm)</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Cutting Speed (m/min)</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Feed/Tooth (mm)</th>
@@ -104,7 +104,7 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
             <tbody className="bg-surface divide-y divide-border">
               {compatibleTools.map(tool => (
                 <tr key={tool.id} className="hover:bg-background/60">
-                  <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">{tool.name}</td>
+                  <td className="px-6 py-4 font-medium text-primary break-words">{tool.name}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.toolType}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.diameter.toFixed(2)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.cuttingSpeedVc ?? 'N/A'}</td>

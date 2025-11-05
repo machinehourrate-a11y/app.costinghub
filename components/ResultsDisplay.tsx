@@ -81,7 +81,8 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currenc
            <div className="bg-surface rounded-lg p-2 space-y-1">
               <ResultRow label="Machine Cost" value={formatCurrency(results.machineCost, currency)} className="bg-background/50"/>
               <ResultRow label="Labor Cost" value={formatCurrency(results.laborCost, currency)} className=""/>
-              <ResultRow label="Overhead Cost" value={formatCurrency(results.overheadCost, currency)} className="bg-background/50"/>
+              <ResultRow label="Surface Treatment Cost" value={formatCurrency(results.surfaceTreatmentCost, currency)} className="bg-background/50" />
+              <ResultRow label="Overhead Cost" value={formatCurrency(results.overheadCost, currency)} className=""/>
            </div>
       </div>
       
