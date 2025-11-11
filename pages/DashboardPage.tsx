@@ -11,7 +11,7 @@ import {
   Legend,
   ArcElement,
 } from 'chart.js';
-import { DEFAULT_CALCULATION_IDS } from '../constants';
+import { DEFAULT_CALCULATION_IDS, CURRENCY_CONVERSION_RATES_TO_USD } from '../constants';
 
 ChartJS.register(
   Title,
@@ -23,15 +23,6 @@ ChartJS.register(
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ user, calculations, onNavigate, onEdit, onDelete, onViewResults, userPlan, onUpgrade, isSuperAdmin, theme }) => {
   const [calculationToDelete, setCalculationToDelete] = useState<Calculation | null>(null);
-  const currency = user.currency || 'USD';
-
-  const formatCurrency = (value: number) => {
-    try {
-      return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(value);
-    } catch {
-      return `$${value.toFixed(2)}`; // Fallback
-    }
-  };
 
   const handleDeleteClick = (calc: Calculation) => {
     setCalculationToDelete(calc);
@@ -61,9 +52,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, calculations
         const totalFinal = finalCalculations.length;
         const totalDraft = calculations.length - totalFinal;
 
-        const averageCost = totalFinal > 0
-            ? finalCalculations.reduce((acc, curr) => acc + (curr.results?.costPerPart || 0), 0) / totalFinal
-            : 0;
+        const totalCostUSD = finalCalculations.reduce((acc, curr) => {
+            const rate = CURRENCY_CONVERSION_RATES_TO_USD[curr.inputs.currency || 'USD'] || 1;
+            const costInUSD = (curr.results?.costPerPart || 0) * rate;
+            return acc + costInUSD;
+        }, 0);
+
+        const averageCost = totalFinal > 0 ? totalCostUSD / totalFinal : 0;
+
 
         return {
             totalCalculations: calculations.length,
@@ -136,10 +132,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, calculations
           </Card>
           <Card className="flex flex-col justify-between">
               <div>
-                  <h3 className="text-lg font-semibold text-primary mb-2">Avg. Cost / Part</h3>
-                  <p className="text-4xl font-bold">{formatCurrency(summaryStats.averageCost)}</p>
+                  <h3 className="text-lg font-semibold text-primary mb-2">Avg. Cost / Part (USD)</h3>
+                  <p className="text-4xl font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(summaryStats.averageCost)}</p>
               </div>
-              <p className="text-sm text-text-muted mt-2">(across all final calculations)</p>
+              <p className="text-sm text-text-muted mt-2">(converted to USD across all final calculations)</p>
           </Card>
           <Card>
               <h3 className="text-lg font-semibold text-primary mb-4">Status Breakdown</h3>
@@ -196,7 +192,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, calculations
               </thead>
               <tbody className="bg-surface divide-y divide-border">
                 {sortedCalculations.map((calc) => {
-                  const isShowcase = DEFAULT_CALCULATION_IDS.has(calc.id);
+                  const isShowcase = DEFAULT_CALCULATION_IDS.has(calc.inputs.original_id!);
                   return (
                   <tr key={calc.id} className="hover:bg-background/60">
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -226,7 +222,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, calculations
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">
-                      {calc.status === 'final' && calc.results ? formatCurrency(calc.results.costPerPart) : 'N/A'}
+                      {calc.status === 'final' && calc.results ? new Intl.NumberFormat('en-US', { style: 'currency', currency: calc.inputs.currency || 'USD' }).format(calc.results.costPerPart) : 'N/A'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                       <Button variant="secondary" onClick={() => onViewResults(calc)} disabled={calc.status === 'draft'}>View</Button>

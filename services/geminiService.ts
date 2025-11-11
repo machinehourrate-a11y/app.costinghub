@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool } from '../types';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
@@ -307,6 +306,7 @@ const processResponseSchema = {
     properties: {
         name: { type: Type.STRING, description: "The name of the process, e.g., 'Face Milling'." },
         group: { type: Type.STRING, description: "The group this process belongs to, e.g., 'Milling'." },
+        imageUrl: { type: Type.STRING, description: "A URL to a clear, schematic image illustrating the process." },
         compatibleMachineTypes: { type: Type.ARRAY, items: { type: Type.STRING, enum: MACHINE_TYPES } },
         parameters: {
             type: Type.ARRAY,
@@ -333,7 +333,7 @@ export const suggestProcess = async (prompt: string): Promise<GeminiProcessSugge
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: `Based on the following description, define a manufacturing process profile, including its typical calculation parameters. Description: "${prompt}"`,
+            contents: `Based on the following description, define a manufacturing process profile, including its typical calculation parameters and a URL to a schematic image. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: processResponseSchema,
@@ -350,7 +350,7 @@ export const suggestMultipleProcesses = async (prompt: string): Promise<Omit<Pro
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: `Based on the following request, provide a list of manufacturing process profiles, including their typical calculation parameters. Description: "${prompt}"`,
+            contents: `Based on the following request, provide a list of manufacturing process profiles, including their typical calculation parameters and a URL to a schematic image for each. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: { type: Type.ARRAY, items: processResponseSchema },

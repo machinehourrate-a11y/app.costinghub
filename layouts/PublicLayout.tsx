@@ -16,7 +16,7 @@ const Footer: React.FC = () => {
                 <h3 className="text-lg font-semibold text-primary">CostingHub</h3>
                 <p className="mt-1 text-sm text-text-secondary">All Costs. One Hub.</p>
             </div>
-          <p className="text-base text-text-muted text-center">&copy; 2024 CostingHub Inc. All rights reserved.</p>
+          <p className="text-base text-text-muted text-center">&copy; 2025 CostingHub Inc. All rights reserved.</p>
         </div>
       </div>
     </footer>

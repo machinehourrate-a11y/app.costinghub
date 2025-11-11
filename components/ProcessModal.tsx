@@ -18,6 +18,7 @@ const BLANK_PROCESS: Omit<Process, 'id'> = {
   compatibleMachineTypes: [],
   parameters: [],
   formula: '',
+  imageUrl: '',
 };
 
 const uuid = () => `id_${Math.random().toString(36).substring(2, 9)}`;
@@ -129,6 +130,8 @@ export const ProcessModal: React.FC<ProcessModalProps> = ({ process, onSave, onC
               <Input label="Process Name" name="name" value={formData.name} onChange={handleInputChange} required />
               <Input label="Process Group" name="group" value={formData.group} onChange={handleInputChange} required />
             </div>
+            <Input label="Image URL" name="imageUrl" value={formData.imageUrl || ''} onChange={handleInputChange} placeholder="https://example.com/image.png" />
+
 
             <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">Compatible Machine Types</label>

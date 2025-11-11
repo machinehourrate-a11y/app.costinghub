@@ -7,7 +7,7 @@ import type { MaterialMasterItem, MaterialsPageProps, MaterialProperty, User } f
 import { MaterialModal } from '../components/MaterialModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { MultiMaterialModal } from '../components/MultiMaterialModal';
-import { DEFAULT_MATERIAL_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { SUPER_ADMIN_EMAILS } from '../constants';
 import { FilterPopover } from '../components/FilterPopover';
 import { FilterIcon } from '../components/ui/FilterIcon';
 import { Input } from '../components/ui/Input';
@@ -63,7 +63,6 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
         category: useRef<HTMLButtonElement>(null),
         subCategory: useRef<HTMLButtonElement>(null),
         density: useRef<HTMLButtonElement>(null),
-        cost: useRef<HTMLButtonElement>(null),
     };
 
     // State for bulk delete
@@ -72,6 +71,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
     
     const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
+    const currency = 'USD'; // Default currency for library pages
     
     const allProperties = useMemo(() => {
         const props = new Set<string>();
@@ -143,12 +143,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
             const densityString = densityProp ? `${densityProp.value}` : '';
             const densityMatch = !filters.densitySearch || (densityString && densityString.includes(filters.densitySearch));
             
-            const cost = getNumericPropertyValue(material, 'Cost Per Kg');
-            const costMatch = 
-                (filters.minCost === undefined || cost === null || cost >= filters.minCost) &&
-                (filters.maxCost === undefined || cost === null || cost <= filters.maxCost);
-            
-            return nameMatch && categoryMatch && subCategoryMatch && densityMatch && costMatch;
+            return nameMatch && categoryMatch && subCategoryMatch && densityMatch;
         });
     }, [materials, filters]);
 
@@ -191,12 +186,10 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
     };
     
     const handleToggleSelectAll = () => {
-        if (selectedIds.length === paginatedMaterials.filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin).length) {
+        if (selectedIds.length === paginatedMaterials.length) {
             setSelectedIds([]);
         } else {
-            const selectableIds = paginatedMaterials
-                .filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin)
-                .map(mat => mat.id);
+            const selectableIds = paginatedMaterials.map(mat => mat.id);
             setSelectedIds(selectableIds);
         }
     };
@@ -216,14 +209,14 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                     onSave={handleSaveMaterial}
                     onClose={() => setIsModalOpen(false)}
                     allProperties={allProperties}
-                    currency={user.currency || 'USD'}
+                    currency={currency}
                 />
             )}
             {isMultiModalOpen && (
                 <MultiMaterialModal
                     onClose={() => setIsMultiModalOpen(false)}
                     onSave={handleAddMultiple}
-                    currency={user.currency || 'USD'}
+                    currency={currency}
                 />
             )}
             {materialToDelete && (
@@ -289,7 +282,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                                         <input
                                             type="checkbox"
                                             className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
-                                            checked={paginatedMaterials.length > 0 && selectedIds.length === paginatedMaterials.filter(mat => !DEFAULT_MATERIAL_IDS.has(mat.id) || isSuperAdmin).length}
+                                            checked={paginatedMaterials.length > 0 && selectedIds.length === paginatedMaterials.length}
                                             onChange={handleToggleSelectAll}
                                         />
                                     </th>
@@ -319,27 +312,18 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                                         <button ref={filterRefs.density} onClick={() => setActivePopover({ column: 'density', anchorEl: filterRefs.density.current! })}><FilterIcon isActive={!!filters.densitySearch} /></button>
                                     </div>
                                 </th>
-                                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                                     <div className="flex items-center gap-2">
-                                        Cost / Kg
-                                        <button ref={filterRefs.cost} onClick={() => setActivePopover({ column: 'cost', anchorEl: filterRefs.cost.current! })}><FilterIcon isActive={filters.minCost !== undefined || filters.maxCost !== undefined} /></button>
-                                    </div>
-                                </th>
                                 <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                          <tbody className="bg-surface divide-y divide-border">
-                            {paginatedMaterials.map(mat => {
-                                const isDefault = DEFAULT_MATERIAL_IDS.has(mat.id);
-                                const canModify = !isDefault || isSuperAdmin;
-                                return (
+                            {paginatedMaterials.map(mat => (
                                 <tr
                                     key={mat.id}
                                     className={`cursor-pointer ${selectedMaterial?.id === mat.id && !isComparisonMode && !isSelectionMode ? 'bg-primary/10' : 'hover:bg-background/60'} ${selectedIds.includes(mat.id) ? '!bg-primary/20' : ''}`}
                                     onClick={() => {
                                         if (isComparisonMode) return;
                                         if (isSelectionMode) {
-                                            if (canModify) handleToggleSelection(mat.id);
+                                            handleToggleSelection(mat.id);
                                         } else {
                                             setSelectedMaterial(mat);
                                         }
@@ -351,8 +335,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                                                 type="checkbox"
                                                 checked={selectedIds.includes(mat.id)}
                                                 onChange={() => handleToggleSelection(mat.id)}
-                                                disabled={!canModify}
-                                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
                                             />
                                         </td>
                                     )}
@@ -370,19 +353,17 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="font-semibold text-text-primary flex items-center">
                                           {mat.name}
-                                          {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{mat.category}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{mat.subCategory || 'N/A'}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{renderMaterialProperty((mat.properties as any)['Density'])}</td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{renderMaterialProperty((mat.properties as any)['Cost Per Kg'])}</td>
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(mat); }} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Edit</Button>
-                                        <Button variant="secondary" className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} onClick={(e) => { e.stopPropagation(); handleDelete(mat); }} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Delete</Button>
+                                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(mat); }}>Edit</Button>
+                                        <Button variant="secondary" className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" onClick={(e) => { e.stopPropagation(); handleDelete(mat); }}>Delete</Button>
                                     </td>
                                 </tr>
-                            )})}
+                            ))}
                         </tbody>
                     </table>
                 </div>
@@ -491,29 +472,6 @@ const FilterContent: React.FC<{column: string, filters: Record<string, any>, onA
         )
     }
     
-    if (column === 'cost') {
-        const [min, setMin] = useState(filters.minCost ?? '');
-        const [max, setMax] = useState(filters.maxCost ?? '');
-        
-        const handleApply = () => {
-            onApply({
-                minCost: min !== '' ? parseFloat(min) : undefined,
-                maxCost: max !== '' ? parseFloat(max) : undefined,
-            });
-        }
-        
-        return (
-             <div className="space-y-2">
-                <Input label="Min" type="number" value={min} onChange={e => setMin(e.target.value)} />
-                <Input label="Max" type="number" value={max} onChange={e => setMax(e.target.value)} />
-                 <div className="flex justify-end gap-2 pt-2 border-t border-border">
-                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onClear(['minCost', 'maxCost'])}>Clear</Button>
-                    <Button className="!px-3 !py-1 text-xs" onClick={handleApply}>Apply</Button>
-                </div>
-            </div>
-        )
-    }
-
     // Default text filter
     const [value, setValue] = useState(filters[column] || '');
     return (

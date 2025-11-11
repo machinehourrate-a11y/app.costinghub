@@ -1,3 +1,5 @@
+
+
 import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -77,17 +79,27 @@ const PlanCard: React.FC<{ plan: SubscriptionPlan, userCurrency: string, onChoos
     );
 }
 
-export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user, isSuperAdmin, onUpgradePlan }) => {
+export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user, isSuperAdmin, onUpgradePlan, onBack }) => {
   const isNewUser = !user.plan_id;
 
   const handlePayment = (plan: SubscriptionPlan) => {
     const prices = plan.prices as { [key: string]: PriceInfo } | null;
     if (!prices || !user) return;
 
-    const currency = (prices && Object.keys(prices).includes(user.currency || 'USD') ? user.currency || 'USD' : 'USD');
+    const currency = 'USD'; // Default to USD for payments
     const priceInfo = prices[currency] ?? prices.USD;
     
     if (!priceInfo || priceInfo.price <= 0) return;
+
+    const fullAddress = [
+      user.address_line1,
+      user.city,
+      user.state,
+      user.postal_code,
+      user.country,
+    ]
+      .filter(Boolean)
+      .join(', ');
 
     const options: RazorpayOptions = {
       key: 'rzp_test_1DP5mmOlF5G5ag', // Standard Razorpay Test Key
@@ -108,7 +120,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user,
         contact: user.phone || '',
       },
       notes: {
-        address: user.address || 'N/A',
+        address: fullAddress || 'N/A',
       },
       theme: {
         color: '#8b5cf6', // Your brand's primary color
@@ -155,6 +167,14 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user,
   if (isSuperAdmin) {
     return (
       <div className="w-full max-w-5xl mx-auto animate-fade-in">
+        <div className="mb-6">
+            <Button variant="secondary" onClick={onBack}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Settings
+            </Button>
+        </div>
         <Card>
           <div className="text-center p-8">
             <h2 className="text-3xl font-bold text-primary">Admin Access</h2>
@@ -167,6 +187,14 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user,
   
   return (
     <div className="w-full max-w-5xl mx-auto animate-fade-in">
+       <div className="mb-6">
+            <Button variant="secondary" onClick={onBack}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Settings
+            </Button>
+        </div>
       <Card>
         <div className="text-center mb-10">
             {isNewUser ? (
@@ -187,7 +215,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user,
             <PlanCard 
               key={plan.id} 
               plan={plan} 
-              userCurrency={user.currency || 'USD'}
+              userCurrency={'USD'}
               onChoosePlan={() => handleChoosePlan(plan)}
               isCurrent={plan.id === user.plan_id}
             />

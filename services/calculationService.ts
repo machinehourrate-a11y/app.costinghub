@@ -1,6 +1,54 @@
 
 
-import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool, MarkupCosts } from '../types';
+import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool, MarkupCosts, RegionCost, MaterialProperty } from '../types';
+import { CURRENCY_CONVERSION_RATES_TO_USD } from '../constants';
+
+const getConvertedPrice = (
+  itemId: string,
+  itemType: 'material' | 'machine' | 'tool',
+  region: string,
+  regionCosts: RegionCost[],
+  fallbackPrice: number,
+  // The fallback price from the library is assumed to be in USD
+  targetCurrency: string 
+): number => {
+  const now = new Date();
+
+  // Helper to find the latest valid RegionCost object for a given region
+  const getRegionCost = (targetRegion: string): RegionCost | null => {
+    const regionSpecificCosts = regionCosts
+      .filter(rc => 
+        rc.item_id === itemId && 
+        rc.item_type === itemType && 
+        rc.region === targetRegion &&
+        new Date(rc.valid_from) <= now
+      )
+      .sort((a, b) => new Date(b.valid_from).getTime() - new Date(a.valid_from).getTime());
+    
+    return regionSpecificCosts.length > 0 ? regionSpecificCosts[0] : null;
+  };
+
+  // Find the cost entry, with fallback to 'Default'
+  const costEntry = getRegionCost(region) ?? (region !== 'Default' ? getRegionCost('Default') : null);
+
+  const price = costEntry ? costEntry.price : fallbackPrice;
+  const fromCurrency = costEntry ? costEntry.currency : 'USD'; // Assume fallback is USD
+
+  // Conversion logic
+  const fromRate = CURRENCY_CONVERSION_RATES_TO_USD[fromCurrency] || 1;
+  const toRate = CURRENCY_CONVERSION_RATES_TO_USD[targetCurrency] || 1;
+
+  if (fromCurrency === targetCurrency) {
+    return price;
+  }
+  
+  // Convert price to USD first, then to target currency
+  const priceInUsd = price * fromRate;
+  const convertedPrice = priceInUsd / toRate;
+  
+  return convertedPrice;
+};
+
 
 export const calculateBilletWeight = (
   shape: string,
@@ -180,21 +228,27 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
   }
 };
 
-export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machine[], processes: Process[], tools: Tool[]): MachiningResult => {
+export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machine[], processes: Process[], tools: Tool[], regionCosts: RegionCost[]): MachiningResult => {
   const {
     batchVolume,
-    materialCostPerKg,
     transportCostPerKg,
+    heatTreatmentCostPerKg,
     surfaceTreatments,
     setups,
     markups,
     rawMaterialWeightKg,
     finishedPartWeightKg,
-    partSurfaceAreaM2
+    partSurfaceAreaM2,
+    region,
+    materialType,
   } = inputs;
 
+  const targetCurrency = inputs.currency || 'USD';
+
   // 1. Material Cost Calculation
-  const totalMaterialCostPerKg = (materialCostPerKg || 0) + (transportCostPerKg || 0);
+  const materialCostPerKg = getConvertedPrice(materialType, 'material', region, regionCosts, inputs.materialCostPerKg, targetCurrency);
+
+  const totalMaterialCostPerKg = materialCostPerKg + (transportCostPerKg || 0) + (heatTreatmentCostPerKg || 0);
   const rawMaterialPartCost = rawMaterialWeightKg * totalMaterialCostPerKg;
   const materialCost = rawMaterialPartCost * batchVolume;
 
@@ -217,6 +271,7 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   let totalSetupTimeMin = 0;
   let totalToolChangeTimeMin = 0;
   let totalMachiningCostForBatch = 0;
+  let totalToolCostForBatch = 0;
   const operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[] = [];
 
   setups.forEach(setup => {
@@ -239,6 +294,15 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
           const rawOpTimeMin = processDef ? calculateOperationTime(op, processDef, tool) : 0;
           const effectiveOpTimeMin = rawOpTimeMin / efficiencyDivisor;
           
+          if (tool && tool.price != null && tool.price > 0 && tool.estimatedLife != null && tool.estimatedLife > 0) {
+            const regionalToolPrice = getConvertedPrice(tool.id, 'tool', region, regionCosts, tool.price, targetCurrency);
+            const toolLifeMinutes = tool.estimatedLife * 60;
+            if (toolLifeMinutes > 0) {
+              const opToolCostForBatch = (effectiveOpTimeMin * batchVolume / toolLifeMinutes) * regionalToolPrice;
+              totalToolCostForBatch += opToolCostForBatch;
+            }
+          }
+
           operationTimeBreakdown.push({
               processName: op.processName,
               timeMin: effectiveOpTimeMin,
@@ -250,7 +314,8 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
       });
       
       if (machine) {
-        totalMachiningCostForBatch += (timeOnThisMachineMin / 60) * machine.hourlyRate;
+        const machineHourlyRate = getConvertedPrice(machine.id, 'machine', region, regionCosts, machine.hourlyRate, targetCurrency);
+        totalMachiningCostForBatch += (timeOnThisMachineMin / 60) * machineHourlyRate;
       }
   });
 
@@ -259,9 +324,10 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutes / batchVolume : 0;
   
   const machiningCostPerPart = batchVolume > 0 ? totalMachiningCostForBatch / batchVolume : 0;
+  const toolCostPerPart = batchVolume > 0 ? totalToolCostForBatch / batchVolume : 0;
   
   // 4. Markup Calculation
-  const baseCost1 = rawMaterialPartCost + machiningCostPerPart;
+  const baseCost1 = rawMaterialPartCost + machiningCostPerPart + toolCostPerPart;
   const baseCost2 = baseCost1 + surfaceTreatmentCostPerPart;
   
   const markupCostsPerPart: MarkupCosts = {
@@ -300,6 +366,7 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
     cycleTimePerPartMin,
     totalMachineTimeHours,
     machiningCost: totalMachiningCostForBatch,
+    toolCost: totalToolCostForBatch,
     markupCosts: markupCostsForBatch,
     totalCost,
     costPerPart,

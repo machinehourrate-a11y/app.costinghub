@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -7,7 +8,7 @@ import { ToolModal } from '../components/ToolModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import type { Tool, ToolLibraryPageProps } from '../types';
 import { MultiToolModal } from '../components/MultiToolModal';
-import { TOOL_TYPES, TOOL_MATERIALS, DEFAULT_TOOL_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { TOOL_TYPES, TOOL_MATERIALS, SUPER_ADMIN_EMAILS } from '../constants';
 import { FilterPopover } from '../components/FilterPopover';
 import { FilterIcon } from '../components/ui/FilterIcon';
 
@@ -36,7 +37,6 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
       toolType: useRef<HTMLButtonElement>(null),
       material: useRef<HTMLButtonElement>(null),
       diameter: useRef<HTMLButtonElement>(null),
-      price: useRef<HTMLButtonElement>(null),
       estimatedLife: useRef<HTMLButtonElement>(null),
   };
 
@@ -47,7 +47,7 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
   
   const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
   
-  const currency = user.currency || 'USD';
+  const currency = 'USD'; // Default currency for library pages
   const currencySymbol = currencySymbols[currency] || '$';
 
   const handleAddNew = () => {
@@ -91,15 +91,11 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
             (filters.minDiameter === undefined || tool.diameter >= filters.minDiameter) &&
             (filters.maxDiameter === undefined || tool.diameter <= filters.maxDiameter);
 
-        const priceMatch = 
-            (filters.minPrice === undefined || tool.price === null || tool.price >= filters.minPrice) &&
-            (filters.maxPrice === undefined || tool.price === null || tool.price <= filters.maxPrice);
-            
         const lifeMatch = 
             (filters.minEstimatedLife === undefined || tool.estimatedLife === null || tool.estimatedLife >= filters.minEstimatedLife) &&
             (filters.maxEstimatedLife === undefined || tool.estimatedLife === null || tool.estimatedLife <= filters.maxEstimatedLife);
 
-        return nameMatch && typeMatch && materialMatch && diameterMatch && priceMatch && lifeMatch;
+        return nameMatch && typeMatch && materialMatch && diameterMatch && lifeMatch;
     });
   }, [tools, filters]);
 
@@ -118,7 +114,6 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
         const newFilters = {...filters};
         delete newFilters[column];
         if (column === 'diameter') { delete newFilters.minDiameter; delete newFilters.maxDiameter; }
-        if (column === 'price') { delete newFilters.minPrice; delete newFilters.maxPrice; }
         if (column === 'estimatedLife') { delete newFilters.minEstimatedLife; delete newFilters.maxEstimatedLife; }
         setFilters(newFilters);
         setActivePopover(null);
@@ -145,12 +140,10 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
   };
   
   const handleToggleSelectAll = () => {
-      if (selectedIds.length === paginatedTools.filter(t => !DEFAULT_TOOL_IDS.has(t.id) || isSuperAdmin).length) {
+      if (selectedIds.length === paginatedTools.length) {
           setSelectedIds([]);
       } else {
-          const selectableIds = paginatedTools
-              .filter(t => !DEFAULT_TOOL_IDS.has(t.id) || isSuperAdmin)
-              .map(t => t.id);
+          const selectableIds = paginatedTools.map(t => t.id);
           setSelectedIds(selectableIds);
       }
   };
@@ -237,7 +230,7 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
                         <input
                             type="checkbox"
                             className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
-                            checked={paginatedTools.length > 0 && selectedIds.length === paginatedTools.filter(t => !DEFAULT_TOOL_IDS.has(t.id) || isSuperAdmin).length}
+                            checked={paginatedTools.length > 0 && selectedIds.length === paginatedTools.length}
                             onChange={handleToggleSelectAll}
                         />
                     </th>
@@ -255,48 +248,39 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
                     <div className="flex items-center gap-2">Diameter (mm) <button ref={filterRefs.diameter} onClick={() => setActivePopover({ column: 'diameter', anchorEl: filterRefs.diameter.current! })}><FilterIcon isActive={filters.minDiameter !== undefined || filters.maxDiameter !== undefined} /></button></div>
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                    <div className="flex items-center gap-2">Price <button ref={filterRefs.price} onClick={() => setActivePopover({ column: 'price', anchorEl: filterRefs.price.current! })}><FilterIcon isActive={filters.minPrice !== undefined || filters.maxPrice !== undefined} /></button></div>
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                     <div className="flex items-center gap-2">Est. Life (hrs) <button ref={filterRefs.estimatedLife} onClick={() => setActivePopover({ column: 'estimatedLife', anchorEl: filterRefs.estimatedLife.current! })}><FilterIcon isActive={filters.minEstimatedLife !== undefined || filters.maxEstimatedLife !== undefined} /></button></div>
                 </th>
                 <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="bg-surface divide-y divide-border">
-              {paginatedTools.length > 0 ? paginatedTools.map((tool) => {
-                const isDefault = DEFAULT_TOOL_IDS.has(tool.id);
-                const canModify = !isDefault || isSuperAdmin;
-                return (
-                <tr key={tool.id} className={`cursor-pointer hover:bg-background/60 ${selectedIds.includes(tool.id) ? '!bg-primary/20' : ''}`} onClick={() => { if(isSelectionMode && canModify) handleToggleSelection(tool.id)}}>
+              {paginatedTools.length > 0 ? paginatedTools.map((tool) => (
+                <tr key={tool.id} className={`cursor-pointer hover:bg-background/60 ${selectedIds.includes(tool.id) ? '!bg-primary/20' : ''}`} onClick={() => { if(isSelectionMode) handleToggleSelection(tool.id)}}>
                   {isSelectionMode && (
                       <td className="px-4 py-4">
                           <input
                               type="checkbox"
                               checked={selectedIds.includes(tool.id)}
                               onChange={() => handleToggleSelection(tool.id)}
-                              disabled={!canModify}
-                              className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                              className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
                           />
                       </td>
                   )}
                   <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">
                       {tool.name}
-                      {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.toolType}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.material}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.diameter.toFixed(2)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.price ? `${currencySymbol}${tool.price.toFixed(2)}` : 'N/A'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{tool.estimatedLife ?? 'N/A'}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(tool); }} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Edit</Button>
-                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(tool); }} disabled={!canModify} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} title={!canModify ? "Default items cannot be modified" : ""}>Delete</Button>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(tool); }}>Edit</Button>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(tool); }} className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400">Delete</Button>
                   </td>
                 </tr>
-              )}) : (
+              )) : (
                 <tr>
-                    <td colSpan={isSelectionMode ? 8 : 7} className="text-center py-10 text-text-secondary">
+                    <td colSpan={isSelectionMode ? 7 : 6} className="text-center py-10 text-text-secondary">
                         No tools found matching your criteria.
                     </td>
                 </tr>
@@ -382,7 +366,7 @@ const FilterContent: React.FC<{column: string; filters: Record<string, any>; onA
     }
     
     // Range filter for numeric data
-    if (['diameter', 'price', 'estimatedLife'].includes(column)) {
+    if (['diameter', 'estimatedLife'].includes(column)) {
         const minKey = `min${column.charAt(0).toUpperCase() + column.slice(1)}`;
         const maxKey = `max${column.charAt(0).toUpperCase() + column.slice(1)}`;
         const [min, setMin] = useState(filters[minKey] || '');

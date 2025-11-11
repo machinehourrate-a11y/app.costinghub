@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
@@ -14,15 +13,21 @@ import { SettingsPage } from './pages/SettingsPage';
 import { SuperAdminPage } from './pages/SuperAdminPage';
 import { SubscriptionPage } from './pages/SubscriptionPage';
 import { ToolLibraryPage } from './pages/ToolLibraryPage';
+import { CostMasterPage } from './pages/CostMasterPage';
 import { MainLayout } from './layouts/MainLayout';
 import { PublicLayout } from './layouts/PublicLayout';
 import { UserManagementPage } from './pages/UserManagementPage';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { LandingPage } from './pages/LandingPage';
 import { FeedbackPage } from './pages/FeedbackPage';
-import type { User, Calculation, MaterialMasterItem, MachiningInput, Machine, Process, SubscriptionPlan, View, Tool, SubscriberInfo, Feedback } from './types';
-import { SUPER_ADMIN_EMAILS, DEFAULT_PROCESSES, INITIAL_MATERIALS_MASTER, DEFAULT_MACHINES_MASTER, DEFAULT_TOOLS_MASTER, DEFAULT_CALCULATIONS_SHOWCASE } from './constants';
+import { FeedbackListPage } from './pages/FeedbackListPage';
+import { ChangelogPage } from './pages/ChangelogPage';
+import type { User, Calculation, MaterialMasterItem, Machine, Process, SubscriptionPlan, View, Tool, SubscriberInfo, Feedback, RegionCost, RegionCurrencyMap, MachiningInput } from './types';
+import { SUPER_ADMIN_EMAILS, DEFAULT_PROCESSES, INITIAL_MATERIALS_MASTER, DEFAULT_MACHINES_MASTER, DEFAULT_TOOLS_MASTER, DEFAULT_CALCULATIONS_SHOWCASE, DEFAULT_REGION_CURRENCY_MAP, DEFAULT_SUBSCRIPTION_PLANS, DEFAULT_MATERIAL_NAMES, DEFAULT_MACHINE_NAMES, DEFAULT_TOOL_NAMES } from './constants';
 import { SubscriptionUpgradeModal } from './components/SubscriptionUpgradeModal';
+import { calculateMachiningCosts } from './services/calculationService';
+
+const uuid = () => crypto.randomUUID();
 
 const App: React.FC = () => {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -34,6 +39,9 @@ const App: React.FC = () => {
   const [processes, setProcesses] = useState<Process[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [subscribers, setSubscribers] = useState<SubscriberInfo[]>([]);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [regionCosts, setRegionCosts] = useState<RegionCost[]>([]);
+  const [regionCurrencyMap, setRegionCurrencyMap] = useState<RegionCurrencyMap[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('auth');
   const [editingCalculation, setEditingCalculation] = useState<Calculation | null>(null);
@@ -41,517 +49,478 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const isInitialUserLoad = useRef(true);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
-  // Effect to apply the theme to the document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-
   const fetchData = useCallback(async (currentSession: Session) => {
     if (!currentSession.user) return;
-    
-    // Seed showcases for new users
-    const { data: existingCalcs, error: fetchError } = await supabase.from('calculations').select('id', { count: 'exact' });
 
-    if (fetchError) throw fetchError;
+    try {
+      const [calcRes, matRes, machRes, toolRes, procRes, regionCostRes, regionCurrencyRes, plansRes, profileRes] = await Promise.all([
+        supabase.from('calculations').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('materials').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('machines').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('tools').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('processes').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('region_costs').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('region_currency_map').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
+        supabase.from('subscription_plans').select('*'),
+        supabase.from('profiles').select('*').eq('id', currentSession.user.id).single()
+      ]);
 
-    // If it's the first time and the user has no calculations, seed the templates.
-    if (isInitialUserLoad.current && existingCalcs.length === 0) {
-        const showcaseTemplates = DEFAULT_CALCULATIONS_SHOWCASE.map(calc => ({
-            ...calc,
-            user_id: currentSession.user.id
-        }));
-        const { error: insertError } = await supabase.from('calculations').insert(showcaseTemplates as any);
-        if (insertError) {
-          // Don't block the user if seeding fails, just log it.
-          console.error("Failed to seed showcase calculations:", insertError);
+      const results = [calcRes, matRes, machRes, toolRes, procRes, regionCostRes, regionCurrencyRes, plansRes, profileRes];
+      for (const res of results) {
+        if (res.error && res.error.code !== 'PGRST116') { // Ignore "The result contains 0 rows" error for single()
+          throw res.error;
         }
+      }
+      
+      let finalCalculations = (calcRes.data as any[]) || [];
+      let finalMaterials = (matRes.data as any[]) || [];
+      let finalMachines = (machRes.data as any[]) || [];
+      let finalTools = (toolRes.data as any[]) || [];
+      let finalProcesses = (procRes.data as any[]) || [];
+      let finalRegionCurrencyMap = regionCurrencyRes.data || [];
+      let allRegionCosts = regionCostRes.data || [];
+
+      // FIX: Changed type from Promise<any>[] to PromiseLike<any>[] to match the return type of supabase calls.
+      const seedingOperations: PromiseLike<any>[] = [];
+
+      // --- Seed Showcase Calculations ---
+      const existingOriginalIds = new Set(finalCalculations.map(c => (c.inputs as MachiningInput).original_id).filter(Boolean));
+      const missingShowcaseCalculations = DEFAULT_CALCULATIONS_SHOWCASE.filter(
+          calc => !existingOriginalIds.has(calc.id)
+      );
+      if (missingShowcaseCalculations.length > 0) {
+        const showcaseTemplates = missingShowcaseCalculations.map(calc => {
+            const newId = uuid();
+            const results = calculateMachiningCosts(calc.inputs, DEFAULT_MACHINES_MASTER, DEFAULT_PROCESSES, DEFAULT_TOOLS_MASTER, []);
+            return {
+                id: newId,
+                user_id: currentSession.user.id,
+                status: calc.status,
+                inputs: { ...calc.inputs, id: uuid(), original_id: calc.id },
+                results: results,
+            };
+        });
+        seedingOperations.push(
+            supabase.from('calculations').insert(showcaseTemplates as any).select().then(res => {
+                if (res.error) console.error("Failed to seed showcase calculations:", res.error.message);
+                else if (res.data) finalCalculations = [...finalCalculations, ...res.data];
+            })
+        );
+      }
+      
+      // --- Seed User-Specific Libraries ---
+      // Seed Materials only if the user has none. This makes it a one-time setup for each user.
+      if (finalMaterials.length === 0) {
+          const materialsToSeed = INITIAL_MATERIALS_MASTER.map(m => ({ ...m, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('materials').insert(materialsToSeed as any).select().then(res => {
+                  if (res.error) console.error("Failed to seed materials:", res.error.message);
+                  else if (res.data) finalMaterials = [...finalMaterials, ...res.data];
+              })
+          );
+      }
+
+      // Seed Machines only if the user has none.
+      if (finalMachines.length === 0) {
+          const machinesToSeed = DEFAULT_MACHINES_MASTER.map(m => ({ ...m, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('machines').insert(machinesToSeed as any).select().then(res => {
+                  if (res.error) console.error("Failed to seed machines:", res.error.message);
+                  else if (res.data) finalMachines = [...finalMachines, ...res.data];
+              })
+          );
+      }
+
+      // Seed Tools only if the user has none.
+      if (finalTools.length === 0) {
+          const toolsToSeed = DEFAULT_TOOLS_MASTER.map(t => ({ ...t, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('tools').insert(toolsToSeed as any).select().then(res => {
+                  if (res.error) console.error("Failed to seed tools:", res.error.message);
+                  else if (res.data) finalTools = [...finalTools, ...res.data];
+              })
+          );
+      }
+      
+      // Seed Processes: This library remains managed. New default processes will be added to all users.
+      const existingProcessNames = new Set(finalProcesses.map(p => p.name));
+      const missingProcesses = DEFAULT_PROCESSES.filter(p => !existingProcessNames.has(p.name));
+      if (missingProcesses.length > 0) {
+          const processesToSeed = missingProcesses.map(p => ({ ...p, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('processes').insert(processesToSeed as any).select().then(res => {
+                  if (res.error) console.error("Failed to seed processes:", res.error.message);
+                  else if (res.data) finalProcesses = [...finalProcesses, ...res.data];
+              })
+          );
+      }
+
+      if (seedingOperations.length > 0) {
+        await Promise.all(seedingOperations);
+      }
+      
+      // --- BEGIN BACKFILL LOGIC for USA default pricing ---
+      const backfillUsdPricingOps: Promise<void>[] = [];
+      const now = new Date().toISOString();
+      const userId = currentSession.user.id;
+      
+      const createBackfillPromise = (items: any[], type: 'material' | 'machine' | 'tool', nameSet: Set<string>, priceSelector: (item: any) => number | null | undefined): PromiseLike<void> | null => {
+          const defaultItems = items.filter(item => nameSet.has(item.name));
+          const itemsToBackfill = defaultItems.filter(item => 
+              !allRegionCosts.some(rc => rc.item_id === item.id && rc.item_type === type && rc.region === 'United States')
+          );
+
+          if (itemsToBackfill.length > 0) {
+              const newCosts = itemsToBackfill.map(item => ({
+                  item_id: item.id,
+                  item_type: type,
+                  region: 'United States',
+                  price: priceSelector(item) || 0,
+                  currency: 'USD',
+                  valid_from: now,
+                  user_id: userId,
+              })).filter(rc => rc.price > 0);
+
+              if (newCosts.length > 0) {
+                  return supabase.from('region_costs').insert(newCosts as any).select().then(res => {
+                      if (res.error) {
+                          console.error(`Failed to backfill ${type} USD prices:`, res.error.message);
+                      } else if (res.data) {
+                          allRegionCosts = [...allRegionCosts, ...res.data];
+                      }
+                  });
+              }
+          }
+          return null;
+      };
+      
+      const materialPromise = createBackfillPromise(finalMaterials, 'material', DEFAULT_MATERIAL_NAMES, item => (item.properties as any)['Cost Per Kg']?.value);
+      const machinePromise = createBackfillPromise(finalMachines, 'machine', DEFAULT_MACHINE_NAMES, item => item.hourlyRate);
+      const toolPromise = createBackfillPromise(finalTools, 'tool', DEFAULT_TOOL_NAMES, item => item.price);
+      
+      const allPromises = [materialPromise, machinePromise, toolPromise].filter((p): p is PromiseLike<void> => p !== null);
+
+      if (allPromises.length > 0) {
+          await Promise.all(allPromises);
+      }
+      // --- END BACKFILL LOGIC ---
+
+      setCalculations(finalCalculations as Calculation[]);
+      setMaterials(finalMaterials);
+      setMachines(finalMachines);
+      setTools(finalTools);
+      setProcesses(finalProcesses);
+      setRegionCurrencyMap(finalRegionCurrencyMap);
+      setRegionCosts(allRegionCosts);
+      const plansData = (plansRes.data && plansRes.data.length > 0) ? plansRes.data : DEFAULT_SUBSCRIPTION_PLANS;
+      setPlans(plansData);
+      
+      if (profileRes.data) {
+        let profile = profileRes.data;
+        const updates: Partial<User> = {};
+
+        // Scenario 1: New user with no plan assigned yet.
+        if (!profile.plan_id) {
+            const freePlan = plansData.find(p => p.name === 'Free');
+            if (freePlan) {
+                const expires = new Date(currentSession.user.created_at);
+                expires.setFullYear(expires.getFullYear() + 1);
+                
+                updates.plan_id = freePlan.id;
+                updates.subscription_status = 'active';
+                updates.subscription_expires_on = expires.toISOString();
+            }
+        } 
+        // Scenario 2: Existing user with a plan but no expiry date (data backfill).
+        else if (!profile.subscription_expires_on) {
+            const userPlan = plansData.find(p => p.id === profile.plan_id);
+            let expires: Date | null = null;
+            if (userPlan) {
+                if (userPlan.name === 'Free' || userPlan.period === '') {
+                    const creationDate = new Date(currentSession.user.created_at);
+                    creationDate.setFullYear(creationDate.getFullYear() + 1);
+                    expires = creationDate;
+                } else if (userPlan.period === 'mo') {
+                    const oneMonthFromNow = new Date();
+                    oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+                    expires = oneMonthFromNow;
+                } else if (userPlan.period === 'yr') {
+                    const oneYearFromNow = new Date();
+                    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                    expires = oneYearFromNow;
+                }
+            }
+            if (expires) {
+                updates.subscription_expires_on = expires.toISOString();
+            }
+        }
+
+        if (Object.keys(updates).length > 0) {
+            const { data: updatedProfile, error: updateError } = await supabase
+                .from('profiles')
+                .update(updates as any)
+                .eq('id', currentSession.user.id)
+                .select()
+                .single();
+
+            if (updateError && updateError.code !== 'PGRST116') {
+                throw updateError;
+            }
+            // Use the updated profile from the DB if it returns, otherwise merge the local updates
+            profile = updatedProfile || { ...profile, ...updates };
+        }
+
+        const fullUser: User = { ...profile, email: currentSession.user.email! };
+        setUser(fullUser);
+      }
+
+      if (SUPER_ADMIN_EMAILS.includes(currentSession.user.email!)) {
+          const { data, error } = await supabase.rpc('get_subscribers_list');
+          if (error) {
+            throw error;
+          }
+          setSubscribers(data as SubscriberInfo[]);
+
+          const { data: feedbackData, error: feedbackError } = await supabase.from('feedback').select('*').order('created_at', { ascending: false });
+          if (feedbackError) {
+            throw feedbackError;
+          }
+          setFeedbacks(feedbackData || []);
+      }
+
+    } catch (e: any) {
+        console.error("An error occurred during data fetch.", e);
+        setError(`There was an unexpected error. Finish what you were doing and then refresh the page to try again. Error: ${e.message}`);
     }
-    
-    const [calcRes, matRes, machRes, toolRes, procRes] = await Promise.all([
-      supabase.from('calculations').select('*'),
-      supabase.from('materials').select('*'),
-      supabase.from('machines').select('*'),
-      supabase.from('tools').select('*'),
-      supabase.from('processes').select('*'),
-    ]);
-
-    if (calcRes.error) throw calcRes.error;
-    if (matRes.error) throw matRes.error;
-    if (machRes.error) throw machRes.error;
-    if (toolRes.error) throw toolRes.error;
-    if (procRes.error) throw procRes.error;
-
-    setCalculations((calcRes.data as unknown as Calculation[]) || []);
-    
-    const userMaterials = (matRes.data as MaterialMasterItem[]) || [];
-    const combinedMaterials = [...INITIAL_MATERIALS_MASTER];
-    userMaterials.forEach(um => {
-      if (!INITIAL_MATERIALS_MASTER.some(dm => dm.id === um.id)) {
-        combinedMaterials.push(um);
-      }
-    });
-    setMaterials(combinedMaterials);
-
-    const userMachines = (machRes.data as Machine[]) || [];
-    const combinedMachines = [...DEFAULT_MACHINES_MASTER];
-    userMachines.forEach(um => {
-      if (!DEFAULT_MACHINES_MASTER.some(dm => dm.id === um.id)) {
-        combinedMachines.push(um);
-      }
-    });
-    setMachines(combinedMachines);
-
-    const userTools = (toolRes.data as Tool[]) || [];
-    const combinedTools = [...DEFAULT_TOOLS_MASTER];
-    userTools.forEach(ut => {
-      if (!DEFAULT_TOOLS_MASTER.some(dt => dt.id === ut.id)) {
-        combinedTools.push(ut);
-      }
-    });
-    setTools(combinedTools);
-
-    const userProcesses = (procRes.data as Process[]) || [];
-    const combinedProcesses = [...DEFAULT_PROCESSES];
-    userProcesses.forEach(up => {
-      if (!DEFAULT_PROCESSES.some(dp => dp.id === up.id)) {
-        combinedProcesses.push(up);
-      }
-    });
-    setProcesses(combinedProcesses);
-
   }, []);
 
-  // Effect 1: Listen for auth changes and fetch public data
   useEffect(() => {
-    setLoading(true);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        fetchData(session).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
+    });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (!session) {
-        // If user logs out, reset to the public auth page
+      if (session) {
+        fetchData(session);
+        setCurrentView('landing');
+      } else {
+        setUser(null);
+        setCalculations([]);
         setCurrentView('auth');
       }
     });
 
-    supabase.from('subscription_plans').select('*').then(({ data, error: planError }) => {
-      if (planError) setError(`Error loading plans: ${planError.message}`);
-      else setPlans((data as unknown as SubscriptionPlan[]) || []);
-    });
-
     return () => subscription.unsubscribe();
+  }, [fetchData]);
+
+  const handleNavigation = useCallback((view: View) => {
+    setEditingCalculation(null);
+    setViewingCalculation(null);
+    setCurrentView(view);
   }, []);
-
-  // Effect 2: React to session changes to fetch the user's profile
-  useEffect(() => {
-    if (session === undefined) return;
-    
-    setLoading(true);
-
-    if (session?.user) {
-      supabase.from('profiles').select('*').eq('id', session.user.id).single()
-        .then(({ data, error: profileError }) => {
-          if (profileError || !data) {
-            console.error('Error fetching profile:', profileError);
-            const message = profileError?.message ?? 'Profile not found. Please try signing in again.';
-            setError(`Could not fetch user profile: ${message}`);
-            supabase.auth.signOut(); 
-          } else {
-            setUser(data as User);
-          }
-        });
-    } else {
-      setUser(null);
-      setLoading(false);
-    }
-  }, [session]);
-
-  // Effect 3: React to user changes to fetch all their data
-  useEffect(() => {
-    const fetchAllDataForUser = async () => {
-      if (!user || !session) {
-        isInitialUserLoad.current = true;
-        setCalculations([]);
-        setMaterials([]);
-        setMachines([]);
-        setTools([]);
-        setProcesses([]);
-        setSubscribers([]);
-        return;
-      }
-
-      try {
-        await fetchData(session);
-
-        if (user.email && SUPER_ADMIN_EMAILS.includes(user.email)) {
-          const { data: subscribersData, error: subscribersError } = await supabase.rpc('get_subscribers_list');
-          if (subscribersError) throw subscribersError;
-          setSubscribers((subscribersData as SubscriberInfo[]) || []);
-        }
-        
-        if (isInitialUserLoad.current) {
-          setCurrentView('landing');
-          isInitialUserLoad.current = false;
-        }
-      } catch (err: any) {
-        const message = err?.message ?? 'An unknown error occurred while loading data.';
-        setError(`Error loading application data: ${message}`);
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchAllDataForUser();
-  }, [user, session, fetchData]);
-
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const handleUpdateUser = useCallback(async (updates: Partial<User>) => {
-    const currentUserId = session?.user?.id;
-    if (!currentUserId) return;
-    const { data, error: updateError } = await supabase.from('profiles').update(updates).eq('id', currentUserId).select().single();
-    if (updateError) {
-      setError(updateError.message);
+  
+  const handleUpdateUser = useCallback(async (updatedUser: Partial<User>) => {
+    if (!user) return;
+    const { data, error } = await supabase.from('profiles').update(updatedUser as any).eq('id', user.id).select();
+    if (error) {
+      setError(error.message);
     } else if (data) {
-      setUser(data as User);
+      setUser(prev => ({ ...prev!, ...data[0] }));
     }
-  }, [session]);
+  }, [user]);
+
+  const handleSaveCalculation = useCallback(async (calculation: Calculation) => {
+    const { data, error } = await supabase.from('calculations').upsert(calculation as any).select();
+    if (error) {
+      setError(error.message);
+    } else if (data) {
+      setCalculations(prev => [...prev.filter(c => c.id !== calculation.id), data[0] as unknown as Calculation]);
+      handleUpdateUser({ calcNextNumber: (user?.calcNextNumber || 101) + 1 });
+      handleNavigation('results');
+      setViewingCalculation(data[0] as unknown as Calculation);
+    }
+  }, [user, handleUpdateUser, handleNavigation]);
+  
+  const handleAutoSaveDraft = useCallback(async (draft: Calculation) => {
+    const { data, error } = await supabase.from('calculations').upsert(draft as any).select();
+    if (error) {
+      console.error("Autosave failed:", error.message);
+    } else if (data) {
+       setCalculations(prev => [...prev.filter(c => c.id !== draft.id), data[0] as unknown as Calculation]);
+    }
+  }, []);
+  
+  const handleSaveDraft = useCallback(async (draft: Calculation) => {
+    await handleAutoSaveDraft(draft);
+    handleNavigation('calculations');
+  }, [handleAutoSaveDraft, handleNavigation]);
 
   const handleDeleteCalculation = useCallback(async (calculationId: string) => {
-    const { error: deleteError } = await supabase.from('calculations').delete().eq('id', calculationId);
-    if (deleteError) {
-      setError(deleteError.message);
+    const { error } = await supabase.from('calculations').delete().eq('id', calculationId);
+    if (error) {
+      setError(error.message);
     } else {
       setCalculations(prev => prev.filter(c => c.id !== calculationId));
     }
   }, []);
-
-  const handleSaveCalculation = useCallback(async (calculation: Calculation) => {
-    if (!user) return;
-
-    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
-    const userPlan = plans.find(p => p.id === user.plan_id) || plans.find(p => p.id === 'plan_001');
-    const calculationLimit = userPlan?.calculation_limit ?? 5;
-    const isNewCalculation = !calculations.some(c => c.id === calculation.id);
-    const lifetimeCount = user.calculations_created_this_period || 0;
-    const isLimitReached = calculationLimit !== -1 && lifetimeCount >= calculationLimit;
-
-    if (!isSuperAdmin && isNewCalculation && isLimitReached) {
-      setIsUpgradeModalOpen(true);
-      return;
-    }
-
-    const { data: savedCalc, error: calcError } = await supabase.from('calculations').upsert(calculation as any).select().single();
-
-    if (calcError) {
-      setError(calcError.message);
-      return;
-    }
-
-    if (isNewCalculation) {
-      const userUpdates = {
-        calcNextNumber: (user.calcNextNumber || 101) + 1,
-        calculations_created_this_period: lifetimeCount + 1,
-      };
-      await handleUpdateUser(userUpdates);
-      setCalculations(prev => [...prev, savedCalc as unknown as Calculation]);
-    } else {
-      setCalculations(prev => prev.map(c => c.id === savedCalc.id ? savedCalc as unknown as Calculation : c));
-    }
-
-    setViewingCalculation(savedCalc as unknown as Calculation);
-    setCurrentView('results');
-    setEditingCalculation(null);
-  }, [user, calculations, plans, handleUpdateUser]);
-
-  const saveDraftLogic = useCallback(async (draftInput: MachiningInput) => {
-    if (!user) return { success: false };
-
-    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
-    const userPlan = plans.find(p => p.id === user.plan_id) || plans.find(p => p.id === 'plan_001');
-    const calculationLimit = userPlan?.calculation_limit ?? 5;
-    const isNewDraft = !calculations.some(c => c.id === draftInput.id);
-    const lifetimeCount = user.calculations_created_this_period || 0;
-    const isLimitReached = calculationLimit !== -1 && lifetimeCount >= calculationLimit;
-
-    if (!isSuperAdmin && isNewDraft && isLimitReached) {
-        return { success: false, limitReached: true };
-    }
-
-    const draftCalculation: Calculation = {
-      id: draftInput.id || new Date().toISOString(),
-      inputs: draftInput,
-      status: 'draft',
-      user_id: user.id,
-      created_at: draftInput.createdAt,
-    };
-
-    const { data: savedDraft, error: draftError } = await supabase.from('calculations').upsert(draftCalculation as any).select().single();
-
-    if (draftError) {
-      setError(draftError.message);
-      return { success: false };
-    }
-
-    if (isNewDraft) {
-      setCalculations(prev => [...prev, savedDraft as unknown as Calculation]);
-      const userUpdates = {
-        calcNextNumber: (user.calcNextNumber || 101) + 1,
-        calculations_created_this_period: lifetimeCount + 1,
-      };
-      await handleUpdateUser(userUpdates);
-    } else {
-      setCalculations(prev => prev.map(c => c.id === savedDraft.id ? savedDraft as unknown as Calculation : c));
-    }
-
-    return { success: true };
-}, [user, calculations, plans, handleUpdateUser]);
-
-  const handleSaveDraft = useCallback(async (draftInput: MachiningInput) => {
-      const result = await saveDraftLogic(draftInput);
-      if (result.success) {
-          setCurrentView('calculations');
-          setEditingCalculation(null);
-      } else if (result.limitReached) {
-          setIsUpgradeModalOpen(true);
-      }
-  }, [saveDraftLogic]);
-
-  const handleAutoSaveDraft = useCallback(async (draftInput: MachiningInput) => {
-      const result = await saveDraftLogic(draftInput);
-      if (result.limitReached) {
-          setError("Calculation limit reached. Auto-save is paused. Please upgrade your plan.");
-      }
-  }, [saveDraftLogic]);
   
-  const crudHandler = useCallback(async <T extends {id: string, user_id?: string, created_at?: string}>(
-    action: 'add' | 'update' | 'delete',
-    table: 'materials' | 'machines' | 'tools' | 'processes',
-    item: T | string,
-    stateSetter: React.Dispatch<React.SetStateAction<T[]>>
-  ) => {
+  const crudHandler = useCallback(async (table: 'materials' | 'machines' | 'processes' | 'tools' | 'subscription_plans' | 'region_costs', action: 'add' | 'update' | 'delete' | 'add_multiple' | 'delete_multiple', payload: any, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
     if (!user) return;
-    setError(null);
-    
-    let response;
+    let result;
     if (action === 'add') {
-        const { created_at, ...restOfItem } = item as T;
-        const newItem = { ...restOfItem, user_id: user.id };
-        response = await supabase.from(table).insert(newItem as any).select().single();
+      const fullPayload = { ...payload, id: uuid(), user_id: user.id };
+      result = await supabase.from(table).insert(fullPayload as any).select();
+      if (!result.error && result.data) stateSetter(prev => [...prev, result.data[0]]);
     } else if (action === 'update') {
-        response = await supabase.from(table).update(item as any).eq('id', (item as T).id).select().single();
-    } else { // delete
-        response = await supabase.from(table).delete().eq('id', item as string);
-    }
-
-    const { data, error: crudError } = response;
-    if (crudError) {
-        setError(crudError.message);
-        return;
-    }
-    
-    if (action === 'add' && data) {
-        stateSetter(prev => [...prev, data as unknown as T]);
-    } else if (action === 'update' && data) {
-        stateSetter(prev => prev.map(i => i.id === (data as any).id ? data as unknown as T : i));
+      result = await supabase.from(table).update(payload).eq('id', payload.id).select();
+      if (!result.error && result.data) stateSetter(prev => prev.map(item => item.id === payload.id ? result.data[0] : item));
     } else if (action === 'delete') {
-        stateSetter(prev => prev.filter(i => i.id !== (item as string)));
+      result = await supabase.from(table).delete().eq('id', payload);
+      if (!result.error) stateSetter(prev => prev.filter(item => item.id !== payload));
+    } else if (action === 'add_multiple') {
+      const fullPayloads = payload.map((item: any) => ({ ...item, id: uuid(), user_id: user.id }));
+      result = await supabase.from(table).insert(fullPayloads as any).select();
+      if (!result.error && result.data) stateSetter(prev => [...prev, ...result.data]);
+    } else if (action === 'delete_multiple') {
+      result = await supabase.from(table).delete().in('id', payload);
+      if (!result.error) stateSetter(prev => prev.filter(item => !payload.includes(item.id)));
     }
-  }, [user]);
-
-  const bulkDeleteHandler = useCallback(async <T extends { id: string }>(
-    table: 'materials' | 'machines' | 'tools' | 'processes',
-    ids: string[],
-    stateSetter: React.Dispatch<React.SetStateAction<T[]>>
-  ) => {
-    if (!user || ids.length === 0) return;
-    setError(null);
-
-    const { error: deleteError } = await supabase.from(table).delete().in('id', ids);
-
-    if (deleteError) {
-      setError(deleteError.message);
-    } else {
-      stateSetter(prev => prev.filter(item => !ids.includes(item.id)));
-    }
-  }, [user]);
-
-  const handleAddMaterial = (m: MaterialMasterItem) => crudHandler('add', 'materials', m, setMaterials);
-  const handleUpdateMaterial = (m: MaterialMasterItem) => crudHandler('update', 'materials', m, setMaterials);
-  const handleDeleteMaterial = (id: string) => crudHandler('delete', 'materials', id, setMaterials);
-  const handleDeleteMultipleMaterials = (ids: string[]) => bulkDeleteHandler('materials', ids, setMaterials as any);
-
-  const handleAddMachine = (m: Machine) => crudHandler('add', 'machines', m, setMachines);
-  const handleUpdateMachine = (m: Machine) => crudHandler('update', 'machines', m, setMachines);
-  const handleDeleteMachine = (id: string) => crudHandler('delete', 'machines', id, setMachines);
-  const handleDeleteMultipleMachines = (ids: string[]) => bulkDeleteHandler('machines', ids, setMachines as any);
-
-  const handleAddTool = (t: Tool) => crudHandler('add', 'tools', t, setTools);
-  const handleUpdateTool = (t: Tool) => crudHandler('update', 'tools', t, setTools);
-  const handleDeleteTool = (id: string) => crudHandler('delete', 'tools', id, setTools);
-  const handleDeleteMultipleTools = (ids: string[]) => bulkDeleteHandler('tools', ids, setTools as any);
-
-  const handleAddProcess = (p: Process) => crudHandler('add', 'processes', p, setProcesses);
-  const handleUpdateProcess = (p: Process) => crudHandler('update', 'processes', p, setProcesses);
-  const handleDeleteProcess = (id: string) => crudHandler('delete', 'processes', id, setProcesses);
-  const handleDeleteMultipleProcesses = (ids: string[]) => bulkDeleteHandler('processes', ids, setProcesses as any);
-
-  const bulkAddHandler = useCallback(async <T, U>(
-    itemsToAdd: T[],
-    table: 'materials' | 'machines' | 'tools' | 'processes',
-    stateSetter: React.Dispatch<React.SetStateAction<U[]>>
-  ) => {
-    if (!user || itemsToAdd.length === 0) return;
-    setError(null);
-
-    const newItems = itemsToAdd.map(item => ({ 
-        ...item, 
-        id: `id_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        user_id: user.id 
-    }));
-    const { data, error: insertError } = await supabase.from(table).insert(newItems as any).select();
-
-    if (insertError) {
-      setError(insertError.message);
-    } else if (data) {
-      stateSetter(prev => [...prev, ...data as unknown as U[]]);
-    }
-  }, [user]);
-
-  const handleAddMultipleMaterials = (items: Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'materials', setMaterials);
-  const handleAddMultipleMachines = (items: Omit<Machine, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'machines', setMachines);
-  const handleAddMultipleTools = (items: Omit<Tool, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'tools', setTools);
-  const handleAddMultipleProcesses = (items: Omit<Process, 'id' | 'user_id' | 'created_at'>[]) => bulkAddHandler(items, 'processes', setProcesses);
-  
-  const handleAddPlan = async (p: SubscriptionPlan) => {
-      const { data, error: addPlanError } = await supabase.from('subscription_plans').insert(p as any).select().single();
-      if (addPlanError) setError(addPlanError.message); else if (data) setPlans(prev => [...prev, data as unknown as SubscriptionPlan]);
-  };
-  const handleUpdatePlan = async (p: SubscriptionPlan) => {
-      const { data, error: updatePlanError } = await supabase.from('subscription_plans').update(p as any).eq('id', p.id).select().single();
-      if (updatePlanError) setError(updatePlanError.message); else if (data) setPlans(prev => prev.map(plan => plan.id === p.id ? data as unknown as SubscriptionPlan : plan));
-  };
-  const handleDeletePlan = async (id: string) => {
-      const { error: deletePlanError } = await supabase.from('subscription_plans').delete().eq('id', id);
-      if (deletePlanError) setError(deletePlanError.message); else setPlans(prev => prev.filter(p => p.id !== id));
-  };
-
-  const handleUpgradePlan = async (planId: string) => {
-    if (!user) return;
-    await handleUpdateUser({
-        plan_id: planId,
-        subscription_status: 'active',
-        calculations_created_this_period: 0,
-    });
-    setCurrentView('calculations');
-  };
-
-  const handleFeedbackSubmit = useCallback(async (feedbackData: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => {
-    if (!user) {
-      throw new Error("You must be logged in to submit feedback.");
-    }
-    setError(null);
-
-    const feedbackToInsert = {
-      ...feedbackData,
-      user_id: user.id,
-      user_email: user.email,
-    };
     
-    // In a real app, you'd check if a 'feedback' table exists in types/supabase.ts
-    // For now, we cast to 'any' to bypass strict checks for this new, untyped table.
-    const { error: insertError } = await supabase.from('feedback' as any).insert(feedbackToInsert);
-
-    if (insertError) {
-      const errorMessage = `Failed to submit feedback: ${insertError.message}`;
-      setError(errorMessage);
-      throw new Error(errorMessage);
+    if (result && result.error) {
+      if (result.error.code === '23505' && (action === 'add' || action === 'add_multiple')) {
+        const singularTable = table === 'processes' ? 'process' : table.slice(0, -1).replace('_', ' ');
+        setError(`A ${singularTable} with this name or a conflicting unique identifier already exists. Please choose a different name.`);
+        console.warn(`Duplicate entry violation on table '${table}'.`, payload, result.error);
+      } else {
+        console.error(`Error performing ${action} on ${table}:`, result.error);
+        setError(`There was an unexpected error. Please try again. Message: ${result.error.message}`);
+      }
     }
   }, [user]);
 
-  const handleNavigate = (view: View) => {
-    if (view === 'calculator') setEditingCalculation(null);
-    setCurrentView(view);
-  };
-  
-  const handleEdit = (c: Calculation) => {
-    setEditingCalculation(c);
-    setCurrentView('calculator');
-  }
-
-  const handleViewResults = (c: Calculation) => {
-    setViewingCalculation(c);
-    setCurrentView('results');
-  }
-
-  const renderAuthenticatedContent = () => {
-    if (!user) return null;
-
-    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
-    const userPlan = plans.find(p => p.id === user.plan_id) || plans.find(p => p.id === 'plan_001');
-
-    switch (currentView) {
-      case 'landing':
-        return <LandingPage onNavigate={handleNavigate} userName={user.name} />;
-      case 'calculations':
-        return <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigate} onEdit={handleEdit} onDelete={handleDeleteCalculation} onViewResults={handleViewResults} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
-      case 'calculator':
-        return <CalculatorPage user={user} materials={materials} machines={machines} processes={processes} tools={tools} onSave={handleSaveCalculation} onSaveDraft={handleSaveDraft} onAutoSaveDraft={handleAutoSaveDraft} onBack={() => setCurrentView('calculations')} existingCalculation={editingCalculation} />;
-      case 'results':
-        return <ResultsPage user={user} calculation={viewingCalculation} onBack={() => setCurrentView('calculations')} />;
-      case 'materials':
-        return <MaterialsPage materials={materials} onAddMaterial={handleAddMaterial} onUpdateMaterial={handleUpdateMaterial} onDeleteMaterial={handleDeleteMaterial} onAddMultipleMaterials={handleAddMultipleMaterials} onDeleteMultipleMaterials={handleDeleteMultipleMaterials} user={user} />;
-      case 'machines':
-        return <MachineLibraryPage machines={machines} onAddMachine={handleAddMachine} onUpdateMachine={handleUpdateMachine} onDeleteMachine={handleDeleteMachine} onAddMultipleMachines={handleAddMultipleMachines} onDeleteMultipleMachines={handleDeleteMultipleMachines} user={user} />;
-      case 'processes':
-        return <ProcessLibraryPage processes={processes} user={user} onAddProcess={handleAddProcess} onUpdateProcess={handleUpdateProcess} onDeleteProcess={handleDeleteProcess} onAddMultipleProcesses={handleAddMultipleProcesses} onDeleteMultipleProcesses={handleDeleteMultipleProcesses} />;
-      case 'toolLibrary':
-        return <ToolLibraryPage user={user} tools={tools} onAddTool={handleAddTool} onUpdateTool={handleUpdateTool} onDeleteTool={handleDeleteTool} onAddMultipleTools={handleAddMultipleTools} onDeleteMultipleTools={handleDeleteMultipleTools} />;
-      case 'settings':
-        return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
-      case 'subscription':
-        return <SubscriptionPage plans={plans} user={user} isSuperAdmin={isSuperAdmin} onUpgradePlan={handleUpgradePlan} />;
-      case 'feedback':
-        return <FeedbackPage user={user} onSubmit={handleFeedbackSubmit} />;
-      case 'superadmin':
-        return isSuperAdmin ? <SuperAdminPage plans={plans} onAddPlan={handleAddPlan} onUpdatePlan={handleUpdatePlan} onDeletePlan={handleDeletePlan} /> : <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigate} onEdit={handleEdit} onDelete={handleDeleteCalculation} onViewResults={handleViewResults} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
-      case 'subscribersList':
-        return isSuperAdmin ? <UserManagementPage subscribers={subscribers} theme={theme} /> : <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigate} onEdit={handleEdit} onDelete={handleDeleteCalculation} onViewResults={handleViewResults} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
-      default:
-        return <LandingPage onNavigate={handleNavigate} userName={user.name} />;
+  const handleAddRegionCurrency = useCallback(async (map: Omit<RegionCurrencyMap, 'id' | 'created_at' | 'user_id'>) => {
+    if (!user) throw new Error("User not authenticated");
+    const { data, error } = await supabase.from('region_currency_map').insert({ ...map, user_id: user.id }).select();
+    
+    if (error) {
+      if (error.code === '23505') { 
+          const { data: refreshedData, error: refreshError } = await supabase.from('region_currency_map').select('*').or(`user_id.eq.${user.id},user_id.is.null`);
+          if (refreshError) {
+              throw new Error(`The region was just added, but we failed to refresh the list. Please refresh the page.`);
+          } else if (refreshedData) {
+              setRegionCurrencyMap(refreshedData);
+          }
+          return; 
+      }
+      throw error; 
+    } else if (data && data.length > 0) {
+      setRegionCurrencyMap(prev => [...prev, data[0]]);
+    } else {
+      // This handles cases where insert succeeds but select returns null/empty (e.g., RLS)
+      const { data: refreshedData, error: refreshError } = await supabase.from('region_currency_map').select('*').or(`user_id.eq.${user.id},user_id.is.null`);
+      if (refreshError) {
+          throw refreshError;
+      } else if (refreshedData) {
+          setRegionCurrencyMap(refreshedData);
+      }
     }
-  };
-  
-  const renderPublicContent = () => {
-    // The only public view is the authentication page.
-    return <AuthPage />;
-  };
+  }, [user]);
 
-  if (loading || session === undefined) {
-    return <LoadingSpinner />;
+  const handleDeleteRegionCurrency = useCallback(async (id: string) => {
+    const { error } = await supabase.from('region_currency_map').delete().eq('id', id);
+    if (error) {
+      setError(`Error deleting region mapping: ${error.message}`);
+    } else {
+      setRegionCurrencyMap(prev => prev.filter(rcm => rcm.id !== id));
+    }
+  }, []);
+
+  const handleUpgradePlan = useCallback(async (planId: string) => {
+    const plan = plans.find(p => p.id === planId);
+    if (!plan || !user) return;
+    
+    const expires = new Date();
+    let expiryDate: string | null = null;
+    
+    // Only set a new expiry for plans with a defined period
+    if (plan.period === 'mo') {
+      expires.setMonth(expires.getMonth() + 1);
+      expiryDate = expires.toISOString();
+    } else if (plan.period === 'yr') {
+      expires.setFullYear(expires.getFullYear() + 1);
+      expiryDate = expires.toISOString();
+    }
+    
+    const updates: Partial<User> = {
+      plan_id: planId,
+      subscription_status: 'active',
+      subscription_expires_on: expiryDate
+    };
+
+    await handleUpdateUser(updates);
+    handleNavigation('calculations');
+  }, [handleUpdateUser, handleNavigation, plans, user]);
+
+  const handleSubmitFeedback = useCallback(async (feedback: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => {
+    if (!user) throw new Error("User not found");
+    const fullFeedback = { ...feedback, user_id: user.id, user_email: user.email };
+    const { error } = await supabase.from('feedback').insert(fullFeedback as any);
+    if (error) throw error;
+  }, [user]);
+
+  if (loading) return <LoadingSpinner />;
+  
+  if (error) return <div className="text-red-500 p-4">{error}</div>;
+
+  if (!session || !user) {
+    return (
+      <PublicLayout theme={theme} setTheme={setTheme}>
+        <AuthPage />
+      </PublicLayout>
+    );
+  }
+
+  const userPlan = plans.find(p => p.id === user.plan_id) || plans[0];
+  const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
+
+  let content;
+  switch (currentView) {
+    case 'landing': content = <LandingPage onNavigate={handleNavigation} userName={user.name} />; break;
+    case 'calculations': content = <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigation} onEdit={(calc) => { setEditingCalculation(calc); setCurrentView('calculator'); }} onDelete={handleDeleteCalculation} onViewResults={(calc) => { setViewingCalculation(calc); setCurrentView('results'); }} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />; break;
+    case 'calculator': content = <CalculatorPage user={user} materials={materials} machines={machines} processes={processes} tools={tools} regionCosts={regionCosts} regionCurrencyMap={regionCurrencyMap} onSave={handleSaveCalculation} onSaveDraft={handleSaveDraft} onAutoSaveDraft={handleAutoSaveDraft} onBack={() => handleNavigation('calculations')} existingCalculation={editingCalculation} theme={theme} />; break;
+    case 'results': content = <ResultsPage user={user} calculation={viewingCalculation} onBack={() => handleNavigation('calculations')} />; break;
+    case 'materials': content = <MaterialsPage materials={materials} user={user} onAddMaterial={(mat) => crudHandler('materials', 'add', mat, setMaterials)} onUpdateMaterial={(mat) => crudHandler('materials', 'update', mat, setMaterials)} onDeleteMaterial={(id) => crudHandler('materials', 'delete', id, setMaterials)} onAddMultipleMaterials={(mats) => crudHandler('materials', 'add_multiple', mats, setMaterials)} onDeleteMultipleMaterials={(ids) => crudHandler('materials', 'delete_multiple', ids, setMaterials)} />; break;
+    case 'machines': content = <MachineLibraryPage machines={machines} user={user} onAddMachine={(mach) => crudHandler('machines', 'add', mach, setMachines)} onUpdateMachine={(mach) => crudHandler('machines', 'update', mach, setMachines)} onDeleteMachine={(id) => crudHandler('machines', 'delete', id, setMachines)} onAddMultipleMachines={(machs) => crudHandler('machines', 'add_multiple', machs, setMachines)} onDeleteMultipleMachines={(ids) => crudHandler('machines', 'delete_multiple', ids, setMachines)} />; break;
+    case 'processes': content = <ProcessLibraryPage processes={processes} user={user} onAddProcess={(proc) => crudHandler('processes', 'add', proc, setProcesses)} onUpdateProcess={(proc) => crudHandler('processes', 'update', proc, setProcesses)} onDeleteProcess={(id) => crudHandler('processes', 'delete', id, setProcesses)} onAddMultipleProcesses={(procs) => crudHandler('processes', 'add_multiple', procs, setProcesses)} onDeleteMultipleProcesses={(ids) => crudHandler('processes', 'delete_multiple', ids, setProcesses)} />; break;
+    case 'toolLibrary': content = <ToolLibraryPage tools={tools} user={user} onAddTool={(tool) => crudHandler('tools', 'add', tool, setTools)} onUpdateTool={(tool) => crudHandler('tools', 'update', tool, setTools)} onDeleteTool={(id) => crudHandler('tools', 'delete', id, setTools)} onAddMultipleTools={(tls) => crudHandler('tools', 'add_multiple', tls, setTools)} onDeleteMultipleTools={(ids) => crudHandler('tools', 'delete_multiple', ids, setTools)} />; break;
+    case 'costMaster': content = <CostMasterPage materials={materials} machines={machines} tools={tools} regionCosts={regionCosts} regionCurrencyMap={regionCurrencyMap} user={user} onUpdateMaterial={(mat) => crudHandler('materials', 'update', mat, setMaterials)} onUpdateMachine={(mach) => crudHandler('machines', 'update', mach, setMachines)} onUpdateTool={(tool) => crudHandler('tools', 'update', tool, setTools)} onAddRegionCost={(cost) => crudHandler('region_costs', 'add', cost, setRegionCosts)} onUpdateRegionCost={(cost) => crudHandler('region_costs', 'update', cost, setRegionCosts)} onDeleteRegionCost={(id) => crudHandler('region_costs', 'delete', id, setRegionCosts)} onAddRegionCurrency={handleAddRegionCurrency} onDeleteRegionCurrency={handleDeleteRegionCurrency} />; break;
+    case 'settings': content = <SettingsPage user={user} onUpdateUser={handleUpdateUser} plans={plans} onNavigate={handleNavigation} isSuperAdmin={isSuperAdmin} />; break;
+    case 'superadmin': content = <SuperAdminPage plans={plans} onAddPlan={(plan) => crudHandler('subscription_plans', 'add', plan, setPlans)} onUpdatePlan={(plan) => crudHandler('subscription_plans', 'update', plan, setPlans)} onDeletePlan={(id) => crudHandler('subscription_plans', 'delete', id, setPlans)} />; break;
+    case 'subscription': content = <SubscriptionPage plans={plans} user={user} isSuperAdmin={isSuperAdmin} onUpgradePlan={handleUpgradePlan} onBack={() => handleNavigation('settings')} />; break;
+    case 'subscribersList': content = <UserManagementPage subscribers={subscribers} theme={theme} plans={plans} />; break;
+    case 'feedback': content = <FeedbackPage user={user} onSubmit={handleSubmitFeedback} />; break;
+    case 'feedbackList': content = <FeedbackListPage feedbacks={feedbacks} />; break;
+    case 'changelog': content = <ChangelogPage />; break;
+    default: content = <DashboardPage user={user} calculations={calculations} onNavigate={handleNavigation} onEdit={(calc) => { setEditingCalculation(calc); setCurrentView('calculator'); }} onDelete={handleDeleteCalculation} onViewResults={(calc) => { setViewingCalculation(calc); setCurrentView('results'); }} userPlan={userPlan} onUpgrade={() => setIsUpgradeModalOpen(true)} isSuperAdmin={isSuperAdmin} theme={theme} />;
   }
 
   return (
-    <>
-      {error && <div className="fixed top-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg z-50">{error}</div>}
-      {isUpgradeModalOpen && user && <SubscriptionUpgradeModal onClose={() => setIsUpgradeModalOpen(false)} onNavigate={() => { setIsUpgradeModalOpen(false); handleNavigate('subscription'); }} />}
-
-      {!session || !user ? (
-        <PublicLayout theme={theme} setTheme={setTheme}>
-            {renderPublicContent()}
-        </PublicLayout>
-      ) : (
-        <MainLayout user={user} currentView={currentView} onNavigate={handleNavigate} onLogout={handleLogout} editingCalculation={editingCalculation} theme={theme} setTheme={setTheme}>
-            {renderAuthenticatedContent()}
-        </MainLayout>
-      )}
-    </>
+    <MainLayout user={user} currentView={currentView} onNavigate={handleNavigation} onLogout={() => supabase.auth.signOut()} editingCalculation={editingCalculation} theme={theme} setTheme={setTheme}>
+      {isUpgradeModalOpen && <SubscriptionUpgradeModal onClose={() => setIsUpgradeModalOpen(false)} onNavigate={() => { setIsUpgradeModalOpen(false); handleNavigation('subscription'); }} />}
+      {content}
+    </MainLayout>
   );
 };
 

@@ -1,15 +1,57 @@
 import React, { useState, useMemo } from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement } from 'chart.js';
-import type { SubscriberInfo, UserManagementPageProps } from '../types';
+import type { SubscriberInfo, UserManagementPageProps, SubscriptionPlan } from '../types';
 import { Card } from '../components/ui/Card';
+import { SUPER_ADMIN_EMAILS } from '../constants';
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement);
 
 type SortKey = keyof SubscriberInfo | null;
 type SortDirection = 'ascending' | 'descending';
 
-export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscribers, theme }) => {
+const getRowClass = (user: SubscriberInfo, plans: SubscriptionPlan[]): string => {
+    if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+        return 'hover:bg-background/60';
+    }
+
+    let dateString = user.subscription_expires_on;
+    if (!dateString) {
+        const userPlan = plans.find(p => p.name === user.plan_name);
+        let expires: Date | null = null;
+        if (userPlan) {
+            if (userPlan.name === 'Free' || userPlan.period === '') {
+                const creationDate = new Date(user.subscribed_on);
+                creationDate.setFullYear(creationDate.getFullYear() + 1);
+                expires = creationDate;
+            } else if (userPlan.period === 'mo') {
+                const oneMonthFromNow = new Date(); oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1); expires = oneMonthFromNow;
+            } else if (userPlan.period === 'yr') {
+                const oneYearFromNow = new Date(); oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1); expires = oneYearFromNow;
+            }
+        }
+        if (expires) dateString = expires.toISOString();
+    }
+
+    if (!dateString) {
+        return 'hover:bg-background/60';
+    }
+
+    const expiryDate = new Date(dateString);
+    const now = new Date();
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(now.getDate() + 7);
+
+    if (expiryDate < now) {
+        return 'bg-red-500/10 hover:bg-red-500/20';
+    } else if (expiryDate < sevenDaysFromNow) {
+        return 'bg-yellow-500/10 hover:bg-yellow-500/20';
+    }
+
+    return 'hover:bg-background/60';
+};
+
+export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscribers, theme, plans }) => {
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>({ key: 'subscribed_on', direction: 'descending' });
 
     const sortedSubscribers = useMemo(() => {
@@ -85,6 +127,60 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
       }
     }, [theme]);
 
+    const renderExpiryDate = (user: SubscriberInfo) => {
+        // Super admins do not have an expiry date.
+        if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+            return <span className="text-text-muted">Not Applicable</span>;
+        }
+
+        let dateString = user.subscription_expires_on;
+        
+        // If date is missing, calculate a fallback for display purposes
+        if (!dateString) {
+            const userPlan = plans.find(p => p.name === user.plan_name);
+            let expires: Date | null = null;
+
+            if (userPlan) {
+                if (userPlan.name === 'Free' || userPlan.period === '') {
+                    // For Free plans, expiry is 1 year from signup
+                    const creationDate = new Date(user.subscribed_on);
+                    creationDate.setFullYear(creationDate.getFullYear() + 1);
+                    expires = creationDate;
+                } else if (userPlan.period === 'mo') {
+                    // This is a display fallback, the real date will be set on next login
+                    const oneMonthFromNow = new Date();
+                    oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+                    expires = oneMonthFromNow;
+                } else if (userPlan.period === 'yr') {
+                    const oneYearFromNow = new Date();
+                    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+                    expires = oneYearFromNow;
+                }
+            }
+            if (expires) {
+                dateString = expires.toISOString();
+            }
+        }
+
+        if (!dateString) {
+            return <span className="text-text-muted">N/A</span>;
+        }
+
+        const expiryDate = new Date(dateString);
+        const now = new Date();
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(now.getDate() + 7);
+
+        let className = 'text-text-secondary';
+        if (expiryDate < now) {
+            className = 'text-red-500 font-semibold';
+        } else if (expiryDate < sevenDaysFromNow) {
+            className = 'text-yellow-500 font-semibold';
+        }
+
+        return <span className={className}>{expiryDate.toLocaleDateString()}</span>;
+    };
+
 
   return (
     <div className="w-full mx-auto space-y-8 animate-fade-in">
@@ -130,11 +226,14 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer" onClick={() => requestSort('subscribed_on')}>
                     Subscribed On{getSortIndicator('subscribed_on')}
                 </th>
+                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer" onClick={() => requestSort('subscription_expires_on')}>
+                    Expires On{getSortIndicator('subscription_expires_on')}
+                </th>
               </tr>
             </thead>
             <tbody className="bg-surface divide-y divide-border">
               {sortedSubscribers.map((user) => (
-                <tr key={user.id} className="hover:bg-background/60">
+                <tr key={user.id} className={getRowClass(user, plans)}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-text-primary">{user.name}</div>
                     <div className="text-sm text-text-secondary">{user.email}</div>
@@ -151,6 +250,9 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-center">{user.calculation_count || 0}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{user.subscribed_on ? new Date(user.subscribed_on).toLocaleDateString() : 'N/A'}</td>
+                   <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {renderExpiryDate(user)}
+                    </td>
                 </tr>
               ))}
             </tbody>

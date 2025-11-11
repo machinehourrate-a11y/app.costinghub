@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -7,7 +8,7 @@ import { MachineModal } from '../components/MachineModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import type { Machine, MachineLibraryPageProps } from '../types';
 import { MultiMachineModal } from '../components/MultiMachineModal';
-import { MACHINE_TYPES, DEFAULT_MACHINE_IDS, SUPER_ADMIN_EMAILS, ADDITIONAL_AXIS_OPTIONS } from '../constants';
+import { MACHINE_TYPES, SUPER_ADMIN_EMAILS, ADDITIONAL_AXIS_OPTIONS } from '../constants';
 import { FilterPopover } from '../components/FilterPopover';
 import { FilterIcon } from '../components/ui/FilterIcon';
 
@@ -32,7 +33,6 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
   const filterRefs = {
       name: useRef<HTMLButtonElement>(null),
       machineType: useRef<HTMLButtonElement>(null),
-      hourlyRate: useRef<HTMLButtonElement>(null),
       powerKw: useRef<HTMLButtonElement>(null),
       additionalAxis: useRef<HTMLButtonElement>(null),
   };
@@ -76,15 +76,11 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
       const typeMatch = !filters.machineType?.length || filters.machineType.includes(machine.machineType);
       const axisMatch = !filters.additionalAxis?.length || filters.additionalAxis.includes(machine.additionalAxis);
       
-      const rateMatch = 
-          (filters.minHourlyRate === undefined || machine.hourlyRate >= filters.minHourlyRate) &&
-          (filters.maxHourlyRate === undefined || machine.hourlyRate <= filters.maxHourlyRate);
-
       const powerMatch = 
           (filters.minPowerKw === undefined || machine.powerKw >= filters.minPowerKw) &&
           (filters.maxPowerKw === undefined || machine.powerKw <= filters.maxPowerKw);
 
-      return nameMatch && typeMatch && axisMatch && rateMatch && powerMatch;
+      return nameMatch && typeMatch && axisMatch && powerMatch;
     });
   }, [machines, filters]);
   
@@ -102,10 +98,6 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
     const handleClearFilter = (column: string) => {
         const newFilters = {...filters};
         delete newFilters[column];
-        if (column === 'hourlyRate') {
-            delete newFilters.minHourlyRate;
-            delete newFilters.maxHourlyRate;
-        }
         if (column === 'powerKw') {
             delete newFilters.minPowerKw;
             delete newFilters.maxPowerKw;
@@ -135,12 +127,10 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
   };
   
   const handleToggleSelectAll = () => {
-      if (selectedIds.length === paginatedMachines.filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin).length) {
+      if (selectedIds.length === paginatedMachines.length) {
           setSelectedIds([]);
       } else {
-          const selectableIds = paginatedMachines
-              .filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin)
-              .map(m => m.id);
+          const selectableIds = paginatedMachines.map(m => m.id);
           setSelectedIds(selectableIds);
       }
   };
@@ -227,7 +217,7 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
                         <input
                             type="checkbox"
                             className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
-                            checked={paginatedMachines.length > 0 && selectedIds.length === paginatedMachines.filter(m => !DEFAULT_MACHINE_IDS.has(m.id) || isSuperAdmin).length}
+                            checked={paginatedMachines.length > 0 && selectedIds.length === paginatedMachines.length}
                             onChange={handleToggleSelectAll}
                         />
                     </th>
@@ -237,9 +227,6 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
                     <div className="flex items-center gap-2">Type <button ref={filterRefs.machineType} onClick={() => setActivePopover({ column: 'machineType', anchorEl: filterRefs.machineType.current! })}><FilterIcon isActive={!!filters.machineType?.length} /></button></div>
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
-                    <div className="flex items-center gap-2">Rate ($/hr) <button ref={filterRefs.hourlyRate} onClick={() => setActivePopover({ column: 'hourlyRate', anchorEl: filterRefs.hourlyRate.current! })}><FilterIcon isActive={filters.minHourlyRate !== undefined || filters.maxHourlyRate !== undefined} /></button></div>
                 </th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Work Envelope (mm)</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
@@ -252,40 +239,34 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
               </tr>
             </thead>
             <tbody className="bg-surface divide-y divide-border">
-              {paginatedMachines.length > 0 ? paginatedMachines.map((machine) => {
-                const isDefault = DEFAULT_MACHINE_IDS.has(machine.id);
-                const canModify = !isDefault || isSuperAdmin;
-                return (
-                  <tr key={machine.id} className={`cursor-pointer hover:bg-background/60 ${selectedIds.includes(machine.id) ? '!bg-primary/20' : ''}`} onClick={() => { if(isSelectionMode && canModify) handleToggleSelection(machine.id)}}>
+              {paginatedMachines.length > 0 ? paginatedMachines.map((machine) => (
+                  <tr key={machine.id} className={`cursor-pointer hover:bg-background/60 ${selectedIds.includes(machine.id) ? '!bg-primary/20' : ''}`} onClick={() => { if(isSelectionMode) handleToggleSelection(machine.id)}}>
                     {isSelectionMode && (
                         <td className="px-4 py-4">
                             <input
                                 type="checkbox"
                                 checked={selectedIds.includes(machine.id)}
                                 onChange={() => handleToggleSelection(machine.id)}
-                                disabled={!canModify}
-                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary disabled:opacity-50"
+                                className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
                             />
                         </td>
                     )}
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">
                       {machine.name}
-                      {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.machineType}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">${machine.hourlyRate.toFixed(2)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{`${machine.xAxis} x ${machine.yAxis} x ${machine.zAxis}`}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.powerKw}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{machine.additionalAxis}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(machine); }} disabled={!canModify} title={!canModify ? "Default items cannot be modified" : ""}>Edit</Button>
-                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(machine); }} disabled={!canModify} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} title={!canModify ? "Default items cannot be modified" : ""}>Delete</Button>
+                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(machine); }}>Edit</Button>
+                      <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(machine); }} className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400">Delete</Button>
                     </td>
                   </tr>
                 )
-              }) : (
+              ) : (
                 <tr>
-                    <td colSpan={isSelectionMode ? 8 : 7} className="text-center py-10 text-text-secondary">
+                    <td colSpan={isSelectionMode ? 7 : 6} className="text-center py-10 text-text-secondary">
                         No machines found matching your criteria.
                     </td>
                 </tr>
@@ -371,7 +352,7 @@ const FilterContent: React.FC<{column: string; filters: Record<string, any>; onA
     }
     
     // Range filter for numeric data
-    if (column === 'hourlyRate' || column === 'powerKw') {
+    if (column === 'powerKw') {
         const minKey = `min${column.charAt(0).toUpperCase() + column.slice(1)}`;
         const maxKey = `max${column.charAt(0).toUpperCase() + column.slice(1)}`;
         const [min, setMin] = useState(filters[minKey] || '');

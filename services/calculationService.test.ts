@@ -16,7 +16,6 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  // FIX: Cast to 'any' to resolve TypeScript error in a non-Jest environment.
   (console.error as any).mockRestore();
 });
 

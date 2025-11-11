@@ -1,16 +1,19 @@
-
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups } from '../types';
+import { Pie } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
+import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups, RegionCost, RegionCurrencyMap } from '../types';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { calculateMachiningCosts, calculateBilletWeight, calculateOperationTime } from '../services/calculationService';
-import { RAW_MATERIAL_PROCESSES, BILLET_SHAPES, MACHINE_TYPES } from '../constants';
+import { RAW_MATERIAL_PROCESSES, BILLET_SHAPES, MACHINE_TYPES, CURRENCY_CONVERSION_RATES_TO_USD, ALL_CURRENCIES } from '../constants';
 import { OperationModal } from '../components/OperationModal';
 import { DisplayField } from '../components/ui/DisplayField';
 import { CloseIcon } from '../components/ui/CloseIcon';
+
+ChartJS.register(ArcElement, Tooltip, Legend, Title, ChartDataLabels);
 
 const uuid = () => `id_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -25,12 +28,15 @@ const INITIAL_INPUT: MachiningInput = {
   calculationNumber: '',
   partNumber: '',
   partName: '',
+  customerName: '',
   revision: 'A',
   annualVolume: 1000,
   batchVolume: 100,
   createdAt: new Date().toISOString(),
   partImage: '',
   unitSystem: 'Metric',
+  region: 'Default',
+  currency: 'USD',
   materialCategory: '',
   materialType: '',
   materialCostPerKg: 0,
@@ -42,16 +48,17 @@ const INITIAL_INPUT: MachiningInput = {
   finishedPartWeightKg: 0,
   partSurfaceAreaM2: 0,
   transportCostPerKg: 0,
+  heatTreatmentCostPerKg: 0,
   surfaceTreatments: [],
   setups: [],
   markups: {
-    general: 0,
-    admin: 0,
-    sales: 0,
-    miscellaneous: 0,
-    packing: 0,
-    transport: 0,
-    profit: 0,
+    general: 8,
+    admin: 5,
+    sales: 2,
+    miscellaneous: 1,
+    packing: 5,
+    transport: 5,
+    profit: 20,
     duty: 0,
   },
 };
@@ -63,45 +70,33 @@ const currencySymbols: { [key: string]: string } = {
   INR: '₹',
 };
 
-const markupLabels: { [key in keyof Markups]: string } = {
-  general: 'General',
-  admin: 'Admin',
-  sales: 'Sales',
-  miscellaneous: 'Miscellaneous',
-  packing: 'Packing',
-  transport: 'Transport',
-  profit: 'Profit',
-  duty: 'Duty',
-};
+interface MarkupSliderProps {
+    label: string;
+    name: keyof Markups;
+    value: number;
+    onChange: (name: keyof Markups, value: string) => void;
+}
 
-
-const MarkupSlider: React.FC<{
-  label: string;
-  name: keyof Markups;
-  value: number;
-  onChange: (name: keyof Markups, value: string) => void;
-}> = ({ label, name, value, onChange }) => (
-  <div className="flex items-center gap-4">
-    <label className="text-sm font-medium text-text-secondary w-28 shrink-0">
-      {label}
-    </label>
-    <input
-      type="range"
-      min="0"
-      max="100"
-      step="1"
-      name={name}
-      value={value}
-      onChange={e => onChange(name, e.target.value)}
-      className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary"
-    />
-    <span className="font-semibold text-text-primary text-center bg-background/50 border border-border rounded-md py-1 w-20 shrink-0">
-        {value}%
-    </span>
-  </div>
+const MarkupSlider: React.FC<MarkupSliderProps> = ({ label, name, value, onChange }) => (
+    <div>
+        <label className="block text-sm font-medium text-text-secondary mb-1 flex justify-between">
+            <span>{label}</span>
+            <span className="font-semibold text-text-primary">{value}%</span>
+        </label>
+        <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            name={name}
+            value={value}
+            onChange={(e) => onChange(name, e.target.value)}
+            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary mt-2"
+        />
+    </div>
 );
 
-export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation }) => {
+export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, regionCosts, regionCurrencyMap, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation, theme }) => {
   const [formData, setFormData] = useState<MachiningInput>(INITIAL_INPUT);
   const [errors, setErrors] = useState<{ [key: string]: any }>({});
   const [isUploading, setIsUploading] = useState(false);
@@ -113,11 +108,11 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'unsaved' | 'saving'>('idle');
 
   const isInitialMount = useRef(true);
-  const debounceTimeout = useRef<any>(null);
+  const debounceTimeout = useRef<number | null>(null);
   
   const isMetric = formData.unitSystem === 'Metric';
 
-  const currency = user.currency || 'USD';
+  const currency = formData.currency || 'USD';
   const currencySymbol = currencySymbols[currency] || '$';
 
   const formatCurrency = useCallback((value: number) => {
@@ -127,6 +122,58 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
         return `${currencySymbol}${value.toFixed(2)}`;
     }
   }, [currency, currencySymbol]);
+
+  const availableRegions = useMemo(() => {
+    const regionsFromMap = [...new Set(regionCurrencyMap.map(rcm => rcm.region))];
+    // Ensure Default is always an option and comes first
+    const sorted = regionsFromMap.filter(r => r !== 'Default').sort();
+    return ['Default', ...sorted];
+  }, [regionCurrencyMap]);
+
+  const getPriceInfo = useCallback((
+    itemId: string,
+    itemType: 'material' | 'machine' | 'tool',
+    region: string,
+    fallbackPrice: number,
+    itemName: string
+  ): { price: number; warning?: string } => {
+      const now = new Date();
+
+      const getRegionCost = (targetRegion: string): RegionCost | null => {
+          const regionSpecificCosts = regionCosts
+              .filter(rc => rc.item_id === itemId && rc.item_type === itemType && rc.region === targetRegion && new Date(rc.valid_from) <= now)
+              .sort((a, b) => new Date(b.valid_from).getTime() - new Date(a.valid_from).getTime());
+          return regionSpecificCosts.length > 0 ? regionSpecificCosts[0] : null;
+      };
+
+      let costEntry = getRegionCost(region);
+      let warning: string | undefined = undefined;
+
+      if (!costEntry && region !== 'Default') {
+          costEntry = getRegionCost('Default');
+          if (costEntry) {
+              warning = `Price for ${itemName} in '${region}' not available. Using 'Default' region price.`;
+          }
+      }
+
+      if (!costEntry) {
+          warning = `Price for ${itemName} in '${region}' and 'Default' regions not available. Using library fallback price.`;
+      }
+
+      const price = costEntry ? costEntry.price : fallbackPrice;
+      const fromCurrency = costEntry ? costEntry.currency : 'USD'; // Assume library price is USD
+
+      const fromRate = CURRENCY_CONVERSION_RATES_TO_USD[fromCurrency] || 1;
+      const toRate = CURRENCY_CONVERSION_RATES_TO_USD[currency] || 1; 
+
+      let convertedPrice = price;
+      if (fromCurrency !== currency) {
+          const priceInUsd = price * fromRate;
+          convertedPrice = priceInUsd / toRate;
+      }
+
+      return { price: convertedPrice, warning };
+  }, [regionCosts, currency]);
   
   useEffect(() => {
     if (existingCalculation) {
@@ -169,12 +216,19 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
         clearTimeout(debounceTimeout.current);
     }
 
-    debounceTimeout.current = setTimeout(async () => {
+    debounceTimeout.current = window.setTimeout(async () => {
         if (!formData.partNumber.trim()) {
             return;
         }
         setSaveStatus('saving');
-        await onAutoSaveDraft(formData);
+        const draftCalculation: Calculation = {
+          id: existingCalculation?.id || formData.id,
+          inputs: formData,
+          status: 'draft',
+          user_id: user.id,
+          created_at: existingCalculation?.created_at || formData.createdAt,
+        };
+        await onAutoSaveDraft(draftCalculation);
         setSaveStatus('saved');
     }, 2000);
 
@@ -183,7 +237,38 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
             clearTimeout(debounceTimeout.current);
         }
     }
-  }, [formData, onAutoSaveDraft]);
+  }, [formData, onAutoSaveDraft, existingCalculation, user]);
+
+  const selectedMaterial = useMemo(() => materials.find(m => m.id === formData.materialType), [materials, formData.materialType]);
+  
+  const materialPriceInfo = useMemo(() => {
+    if (!formData.materialType || !selectedMaterial) {
+      return { price: formData.materialCostPerKg, warning: undefined };
+    }
+    const libraryCostProp = (selectedMaterial.properties as any)['Cost Per Kg'];
+    const libraryCost = libraryCostProp ? Number(libraryCostProp.value) : 0;
+    return getPriceInfo(formData.materialType, 'material', formData.region, libraryCost, selectedMaterial.name);
+  }, [formData.materialType, formData.region, selectedMaterial, getPriceInfo, formData.materialCostPerKg]);
+  
+  const pricingWarnings = useMemo(() => {
+    const warnings: string[] = [];
+    if (materialPriceInfo.warning) {
+      warnings.push(materialPriceInfo.warning);
+    }
+    formData.setups.forEach(setup => {
+      if (setup.machineId) {
+        const machine = machines.find(m => m.id === setup.machineId);
+        if (machine) {
+          const { warning } = getPriceInfo(machine.id, 'machine', formData.region, machine.hourlyRate, machine.name);
+          if (warning) {
+            warnings.push(`Setup '${setup.name}' (${machine.name}): ${warning.replace(`Price for ${machine.name} in `, 'Price in ')}`);
+          }
+        }
+      }
+    });
+    return warnings;
+  }, [materialPriceInfo, formData.setups, formData.region, machines, getPriceInfo]);
+
 
   useEffect(() => {
     const { rawMaterialProcess, billetShape, billetShapeParameters, materialDensityGcm3 } = formData;
@@ -252,6 +337,22 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     setFormData(prev => ({ ...prev, [name]: val }));
   };
 
+  const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRegion = e.target.value;
+
+    const mapping = regionCurrencyMap.find(rc => rc.region === newRegion);
+    const defaultMapping = regionCurrencyMap.find(rc => rc.region === 'Default');
+    
+    // Use region's currency, fallback to Default's currency, then to USD.
+    const newCurrency = mapping?.currency || defaultMapping?.currency || 'USD';
+
+    setFormData(prev => ({
+        ...prev,
+        region: newRegion,
+        currency: newCurrency,
+    }));
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -271,6 +372,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       const properties = selectedMaterial.properties as { [key: string]: MaterialProperty };
       
       const findProperty = (baseName: string): MaterialProperty | undefined => {
+        if (!properties) return undefined;
         for (const key in properties) {
             const cleanKey = key.trim().replace(/\s*\([^)]+\)/, '').trim();
             if (cleanKey === baseName) return properties[key];
@@ -284,13 +386,15 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       setFormData(prev => ({
         ...prev,
         materialType: selectedMaterial.id,
-        materialCostPerKg: parseFloat(costProp?.value as string) || 0,
-        materialDensityGcm3: parseFloat(densityProp?.value as string) || 0,
+        materialCategory: selectedMaterial.category,
+        materialCostPerKg: Number(costProp?.value) || 0,
+        materialDensityGcm3: Number(densityProp?.value) || 0,
       }));
     } else {
-        setFormData(prev => ({...prev, materialType: ''}));
+        setFormData(prev => ({...prev, materialType: '', materialCostPerKg: 0, materialDensityGcm3: 0}));
     }
   };
+
 
    const handleBilletShapeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const shapeName = e.target.value;
@@ -359,7 +463,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
   // --- Setup and Operation Handlers ---
   const addSetup = () => {
-    const newSetup: Setup = { id: uuid(), name: `Setup ${formData.setups.length + 1}`, timePerSetupMin: 30, toolChangeTimeSec: 60, efficiency: 1, operations: [], description: '', };
+    const newSetup: Setup = { id: uuid(), name: `Setup ${formData.setups.length + 1}`, timePerSetupMin: 30, toolChangeTimeSec: 60, efficiency: 0.85, operations: [], description: '', };
     setFormData(prev => ({ ...prev, setups: [...prev.setups, newSetup] }));
   };
 
@@ -441,27 +545,42 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      const results = calculateMachiningCosts(formData, machines, processes, tools);
-      onSave({ id: formData.id, inputs: formData, results: results, status: 'final', user_id: user.id, created_at: formData.createdAt });
+      const results = calculateMachiningCosts(formData, machines, processes, tools, regionCosts);
+      onSave({
+        id: existingCalculation?.id || formData.id,
+        inputs: formData,
+        results: results,
+        status: 'final',
+        user_id: user.id,
+        created_at: existingCalculation?.created_at || formData.createdAt
+      });
     }
   };
   
-  const handleSaveDraftClick = () => { onSaveDraft(formData); };
-
-  const selectedMaterial = useMemo(() => materials.find(m => m.id === formData.materialType), [materials, formData.materialType]);
+  const handleSaveDraftClick = () => {
+    const draftCalculation: Calculation = {
+      id: existingCalculation?.id || formData.id,
+      inputs: formData,
+      status: 'draft',
+      user_id: user.id,
+      created_at: existingCalculation?.created_at || formData.createdAt,
+    };
+    onSaveDraft(draftCalculation);
+  };
   
-  const { rawMaterialCostPerPart, machiningCostPerPart, surfaceTreatmentCostPerPart, totalCostPerPart } = useMemo(() => {
-    const results = calculateMachiningCosts(formData, machines, processes, tools);
+  const { rawMaterialCostPerPart, machiningCostPerPart, toolCostPerPart, surfaceTreatmentCostPerPart, totalCostPerPart } = useMemo(() => {
+    const results = calculateMachiningCosts(formData, machines, processes, tools, regionCosts);
     return {
       rawMaterialCostPerPart: results.rawMaterialPartCost,
       machiningCostPerPart: formData.batchVolume > 0 ? results.machiningCost / formData.batchVolume : 0,
+      toolCostPerPart: formData.batchVolume > 0 ? (results.toolCost || 0) / formData.batchVolume : 0,
       surfaceTreatmentCostPerPart: formData.batchVolume > 0 ? results.surfaceTreatmentCost / formData.batchVolume : 0,
       totalCostPerPart: results.costPerPart,
     };
-  }, [formData, machines, processes, tools]);
+  }, [formData, machines, processes, tools, regionCosts]);
   
   const markupValuesPerPart = useMemo(() => {
-    const baseCost1 = rawMaterialCostPerPart + machiningCostPerPart;
+    const baseCost1 = rawMaterialCostPerPart + machiningCostPerPart + toolCostPerPart;
     const baseCost2 = baseCost1 + surfaceTreatmentCostPerPart;
     
     return {
@@ -474,13 +593,100 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
         profit: baseCost2 * ((formData.markups.profit || 0) / 100),
         duty: baseCost2 * ((formData.markups.duty || 0) / 100),
     };
-  }, [rawMaterialCostPerPart, machiningCostPerPart, surfaceTreatmentCostPerPart, formData.markups]);
+  }, [rawMaterialCostPerPart, machiningCostPerPart, toolCostPerPart, surfaceTreatmentCostPerPart, formData.markups]);
+
+  const totalMaterialCostPerKg = useMemo(() => 
+    (materialPriceInfo.price || 0) + (formData.transportCostPerKg || 0) + (formData.heatTreatmentCostPerKg || 0),
+    [materialPriceInfo.price, formData.transportCostPerKg, formData.heatTreatmentCostPerKg]
+  );
 
   const materialCategories = useMemo(() => Array.from(new Set(materials.map(m => m.category))).sort(), [materials]);
   const filteredMaterialGrades = useMemo(() => {
     if (!formData.materialCategory) return [];
     return materials.filter(m => m.category === formData.materialCategory).sort((a,b) => a.name.localeCompare(b.name));
   }, [materials, formData.materialCategory]);
+
+  const partCostBreakdown = useMemo(() => {
+    const processCost = machiningCostPerPart + toolCostPerPart;
+    const { general, admin, sales, miscellaneous, packing, profit, duty } = markupValuesPerPart;
+
+    const breakdownItems = [
+      { label: 'Raw Material', value: rawMaterialCostPerPart },
+      { label: 'Process Cost', value: processCost },
+      { label: 'Surface Treatment', value: surfaceTreatmentCostPerPart },
+      { label: 'General Overhead', value: general },
+      { label: 'Admin Overhead', value: admin },
+      { label: 'Sales Overhead', value: sales },
+      { label: 'Miscellaneous Overhead', value: miscellaneous },
+      { label: 'Packing Overhead', value: packing },
+      { label: 'Profit', value: profit },
+      { label: 'Duty', value: duty },
+    ].filter(item => item.value > 0.005); // Filter out zero or negligible costs
+
+    return breakdownItems;
+  }, [rawMaterialCostPerPart, machiningCostPerPart, toolCostPerPart, surfaceTreatmentCostPerPart, markupValuesPerPart]);
+  
+  const pieChartData = useMemo(() => ({
+    labels: partCostBreakdown.map(d => d.label),
+    datasets: [
+      {
+        data: partCostBreakdown.map(d => d.value),
+        backgroundColor: [
+          '#8b5cf6', '#ec4899', '#10b981', '#f59e0b', '#3b82f6', '#ef4444',
+          '#6366f1', '#84cc16', '#d946ef', '#06b6d4', '#f97316', '#14b8a6'
+        ],
+        borderColor: theme === 'dark' ? '#1A1A1A' : '#FFFFFF', // surface color
+        borderWidth: 2,
+      },
+    ],
+  }), [partCostBreakdown, theme]);
+
+  const pieChartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      title: {
+        display: false,
+      },
+      legend: {
+        position: 'right' as const,
+        labels: {
+          color: theme === 'dark' ? '#A0A0A0' : '#6B7280', // text-secondary
+          boxWidth: 20,
+          padding: 15,
+          font: {
+            size: 12,
+          }
+        },
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context: any) {
+            let label = context.label || '';
+            if (label) {
+              label += ': ';
+            }
+            if (context.parsed !== null) {
+              label += formatCurrency(context.parsed);
+            }
+            return label;
+          }
+        }
+      },
+      datalabels: {
+        formatter: (value: number, ctx: any) => {
+            const total = ctx.chart.data.datasets[0].data.reduce((a: number, b: number) => a + b, 0);
+            if (total === 0) return '0%';
+            const percentage = (value / total * 100);
+            return percentage > 5 ? percentage.toFixed(0) + '%' : '';
+        },
+        color: '#fff',
+        font: {
+            weight: 'bold' as const,
+        }
+      }
+    },
+  }), [theme, formatCurrency]);
 
 
   return (
@@ -512,22 +718,8 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <Input label="Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} error={errors.partNumber} />
                         <Input label="Part Name" name="partName" value={formData.partName} onChange={handleInputChange} error={errors.partName} />
+                        <Input label="Customer Name" name="customerName" value={formData.customerName || ''} onChange={handleInputChange} />
                         <Input label="Revision" name="revision" value={formData.revision} onChange={handleInputChange} />
-                        <Select label="Material Category" name="materialCategory" value={formData.materialCategory} onChange={(e) => {
-                            handleInputChange(e);
-                            setFormData(prev => ({ ...prev, materialType: '' }));
-                          }}>
-                            <option value="">Select a category...</option>
-                            {materialCategories.map(cat => (
-                                <option key={cat} value={cat}>{cat}</option>
-                            ))}
-                        </Select>
-                        <Select label="Material Grade" name="materialType" value={formData.materialType} onChange={handleMaterialChange} error={errors.materialType} disabled={!formData.materialCategory}>
-                            <option value="">Select a grade...</option>
-                            {filteredMaterialGrades.map(m => (
-                                <option key={m.id} value={m.id}>{m.name}</option>
-                            ))}
-                        </Select>
                         <Input label="Annual Volume" name="annualVolume" type="number" value={formData.annualVolume} onChange={handleInputChange} error={errors.annualVolume} unit="parts/yr" />
                         <Input label="Batch Volume" name="batchVolume" type="number" value={formData.batchVolume} onChange={handleInputChange} error={errors.batchVolume} unit="parts" />
                          <div>
@@ -548,6 +740,10 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                 </label>
                             </div>
                         </div>
+                        <Select label="Calculation Region" name="region" value={formData.region} onChange={handleRegionChange}>
+                          {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
+                        </Select>
+                        <DisplayField label="Currency (Auto)" value={formData.currency} />
                         <div className="flex items-end">
                             <div className="p-1 bg-background/50 border border-border rounded-lg flex items-center space-x-1">
                                 <Button type="button" onClick={() => handleInputChange({ target: { name: 'unitSystem', value: 'Metric' } } as any)} variant={isMetric ? 'primary' : 'secondary'}>Metric</Button>
@@ -555,6 +751,49 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                             </div>
                         </div>
                     </div>
+                </Card>
+
+                {pricingWarnings.length > 0 && (
+                  <Card className="border-yellow-500/50 bg-yellow-500/5">
+                      <h3 className="text-yellow-500 font-semibold flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 3.001-1.742 3.001H4.42c-1.53 0-2.493-1.667-1.743-3.001l5.58-9.92zM10 13a1 1 0 110-2 1 1 0 010 2zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          Pricing Warnings
+                      </h3>
+                      <ul className="list-disc list-inside text-yellow-600 text-sm mt-2 space-y-1">
+                          {pricingWarnings.map((warning, i) => <li key={i}>{warning}</li>)}
+                      </ul>
+                  </Card>
+                )}
+                
+                {/* Material Details */}
+                 <Card>
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Material Details</h2>
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
+                        <Select label="Material Category" name="materialCategory" value={formData.materialCategory} onChange={(e) => {
+                            handleInputChange(e);
+                            setFormData(prev => ({ ...prev, materialType: '', materialCostPerKg: 0, materialDensityGcm3: 0 }));
+                          }}>
+                            <option value="">Select a category...</option>
+                            {materialCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </Select>
+                        <Select label="Material Grade" name="materialType" value={formData.materialType} onChange={handleMaterialChange} error={errors.materialType} disabled={!formData.materialCategory}>
+                            <option value="">Select a grade...</option>
+                            {filteredMaterialGrades.map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                            ))}
+                        </Select>
+                        <DisplayField label="Selected Material" value={selectedMaterial?.name || 'N/A'} />
+                        <DisplayField label="Material Cost" value={materialPriceInfo.price.toFixed(2)} unit={`${currencySymbol}/kg`} />
+                        <Input label="Transport Cost" name="transportCostPerKg" type="number" step="any" value={formData.transportCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
+                        <Input label="Heat Treatment Cost" name="heatTreatmentCostPerKg" type="number" step="any" value={formData.heatTreatmentCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
+                         <div className="lg:col-span-2">
+                            <DisplayField label="Total Material Cost / kg" value={totalMaterialCostPerKg.toFixed(2)} unit={`${currencySymbol}/kg`} />
+                        </div>
+                     </div>
                 </Card>
 
                 {/* Raw Material Geometry & Weight */}
@@ -594,18 +833,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                        <Input label="Part Surface Area" name="partSurfaceAreaM2" type="number" step="any" value={getDisplayValue(formData.partSurfaceAreaM2, 'm²')} onChange={(e) => handleSurfaceAreaChange(e.target.value)} error={errors.partSurfaceAreaM2} unit={isMetric ? "m²" : "ft²"} />
                     </div>
                 </Card>
-
-                {/* Raw Material Cost */}
-                <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Raw Material Cost</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
-                        <DisplayField label="Selected Material" value={selectedMaterial?.name || 'N/A'} />
-                        <DisplayField label="Density" value={formData.materialDensityGcm3} unit="g/cm³" />
-                        <Input label="Material Cost" name="materialCostPerKg" type="number" step="any" value={formData.materialCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
-                        <Input label="Transport Cost" name="transportCostPerKg" type="number" step="any" value={formData.transportCostPerKg} onChange={handleInputChange} unit={`${currencySymbol}/kg`} />
-                    </div>
-                </Card>
-
+                
                 {/* Machining Setups & Operations */}
                 <Card>
                     <div className="flex justify-between items-center border-b border-border pb-3 mb-6">
@@ -615,6 +843,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                     <div className="space-y-6">
                         {formData.setups.map((setup) => {
                              const selectedMachine = machines.find(m => m.id === setup.machineId);
+                             const machinePriceInfo = selectedMachine ? getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name) : { price: 0 };
                              
                              return (
                             <div key={setup.id} className="bg-background/50 border border-border p-4 rounded-lg relative">
@@ -631,7 +860,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                         <option value="">Select machine...</option>
                                         {machines.filter(m => m.machineType === setup.machineType).map(m => <option key={m.id} value={m.id}>{m.name} ({m.brand})</option>)}
                                     </Select>
-                                    <DisplayField label="Machine Rate" value={selectedMachine ? formatCurrency(selectedMachine.hourlyRate) : 'N/A'} unit="/hr" />
+                                    <DisplayField label="Machine Rate" value={selectedMachine ? formatCurrency(machinePriceInfo.price) : 'N/A'} unit="/hr" />
                                     <Input label="Setup Time" type="number" step="any" value={setup.timePerSetupMin} onChange={e => updateSetupField(setup.id, 'timePerSetupMin', parseFloat(e.target.value) || 0)} unit="min" />
                                     <Input label="Tool Change Time" type="number" step="any" value={setup.toolChangeTimeSec} onChange={e => updateSetupField(setup.id, 'toolChangeTimeSec', parseFloat(e.target.value) || 0)} unit="sec/tool" />
                                     <div className="lg:col-span-2">
@@ -678,7 +907,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                                         const processDef = processes.find(p => p.name === op.processName);
                                                         const selectedTool = tools.find(t => t.id === op.toolId);
                                                         const time = calculateOperationTime(op, processDef!, selectedTool || null) / (setup.efficiency || 1);
-                                                        const cost = selectedMachine ? (time / 60) * selectedMachine.hourlyRate : 0;
+                                                        const cost = machinePriceInfo.price > 0 ? (time / 60) * machinePriceInfo.price : 0;
                                                         return (
                                                             <tr key={op.id} className="hover:bg-background/40">
                                                                 <td className="px-3 py-2 text-text-secondary">{opIndex + 1}</td>
@@ -714,10 +943,17 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         {formData.surfaceTreatments.map((treatment, index) => (
                             <div key={treatment.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-background/50 p-3 rounded-lg">
                                 <Input label="Treatment Name" value={treatment.name} onChange={e => updateSurfaceTreatment(index, 'name', e.target.value)} />
-                                <Input label="Cost" type="number" step="any" value={treatment.cost} onChange={e => updateSurfaceTreatment(index, 'cost', parseFloat(e.target.value) || 0)} />
+                                <Input 
+                                  label="Cost" 
+                                  type="number" 
+                                  step="any" 
+                                  value={treatment.cost} 
+                                  onChange={e => updateSurfaceTreatment(index, 'cost', parseFloat(e.target.value) || 0)}
+                                  unit={treatment.unit === 'per_kg' ? `${currencySymbol}/kg` : `${currencySymbol}/${isMetric ? 'm²' : 'ft²'}`}
+                                />
                                 <Select label="Unit" value={treatment.unit} onChange={e => updateSurfaceTreatment(index, 'unit', e.target.value)}>
                                     <option value="per_kg">per kg</option>
-                                    <option value="per_area">per m²</option>
+                                    <option value="per_area">per {isMetric ? 'm²' : 'ft²'}</option>
                                 </Select>
                                 {treatment.unit === 'per_kg' ? (
                                     <Select label="Based On" value={treatment.based_on || 'finished_weight'} onChange={e => updateSurfaceTreatment(index, 'based_on', e.target.value)}>
@@ -740,9 +976,10 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                  {/* Cost Summary */}
                 <Card>
                     <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Cost Summary (per Part)</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                         <DisplayField label="Raw Material Cost" value={formatCurrency(rawMaterialCostPerPart)} />
                         <DisplayField label="Machining Cost" value={formatCurrency(machiningCostPerPart)} />
+                        <DisplayField label="Tool Cost" value={formatCurrency(toolCostPerPart)} />
                         <DisplayField label="Surface Treatment Cost" value={formatCurrency(surfaceTreatmentCostPerPart)} />
                     </div>
                 </Card>
@@ -752,14 +989,14 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                     <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup</h2>
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                             <p className="md:col-span-2 text-sm text-text-muted">Applied to (Raw Material + Machining Cost)</p>
+                             <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">1. Applied to (Raw Material + Machining + Tool Cost)</h3>
                             <MarkupSlider label="General" name="general" value={formData.markups.general} onChange={handleMarkupChange} />
                             <MarkupSlider label="Admin" name="admin" value={formData.markups.admin} onChange={handleMarkupChange} />
                             <MarkupSlider label="Sales" name="sales" value={formData.markups.sales} onChange={handleMarkupChange} />
                             <MarkupSlider label="Miscellaneous" name="miscellaneous" value={formData.markups.miscellaneous} onChange={handleMarkupChange} />
                         </div>
                         <div className="border-t border-border pt-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                            <p className="md:col-span-2 text-sm text-text-muted">Applied to (Raw Material + Machining + Surface Treatment)</p>
+                            <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">2. Applied to (Raw Material + Machining + Tool + Surface Treatment)</h3>
                            <MarkupSlider label="Packing" name="packing" value={formData.markups.packing} onChange={handleMarkupChange} />
                            <MarkupSlider label="Transport" name="transport" value={formData.markups.transport} onChange={handleMarkupChange} />
                            <MarkupSlider label="Duty" name="duty" value={formData.markups.duty} onChange={handleMarkupChange} />
@@ -768,19 +1005,25 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                     </div>
                 </Card>
 
-                {/* Markup Breakup */}
+                {/* Part Cost Breakup */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup Breakup (per Part)</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-                        {Object.entries(markupValuesPerPart).map(([key, value]) => (
-                            <div key={key} className="flex justify-between items-center py-2 px-3 rounded-md bg-background/50">
-                                <span className="text-text-secondary">{markupLabels[key as keyof Markups]}</span>
-                                <div className="flex items-center space-x-3">
-                                    <span className="font-semibold text-text-secondary w-12 text-right">{formData.markups[key as keyof Markups]}%</span>
-                                    <span className="font-semibold text-text-primary w-24 text-right">{formatCurrency(value)}</span>
+                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Part Cost Breakup</h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+                        <div className="space-y-2">
+                            {partCostBreakdown.map((item) => (
+                                <div key={item.label} className="flex justify-between items-center py-2 px-3 rounded-md bg-background/50">
+                                    <span className="text-text-secondary">{item.label}</span>
+                                    <span className="font-semibold text-text-primary">{formatCurrency(item.value)}</span>
                                 </div>
+                            ))}
+                            <div className="flex justify-between items-center py-3 px-3 rounded-md bg-surface border-t-2 border-primary mt-2">
+                                <span className="font-bold text-primary">Total Cost / Part</span>
+                                <span className="font-bold text-primary text-lg">{formatCurrency(totalCostPerPart)}</span>
                             </div>
-                        ))}
+                        </div>
+                        <div className="h-80 relative">
+                            <Pie data={pieChartData} options={pieChartOptions} />
+                        </div>
                     </div>
                 </Card>
                 

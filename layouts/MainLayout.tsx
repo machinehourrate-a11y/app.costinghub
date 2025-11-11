@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import type { User, View, Calculation } from '../types';
 import { Sidebar } from '../components/Sidebar';
@@ -26,11 +25,14 @@ const viewTitles: { [key in View]: string } = {
     machines: 'Machine Library',
     processes: 'Process Library',
     toolLibrary: 'Tool Library',
+    costMaster: 'Cost Master',
     settings: 'Settings',
     superadmin: 'Super Admin Panel',
     subscription: 'Subscription Plans',
     subscribersList: 'Subscribers List',
     feedback: 'Feedback & Requests',
+    feedbackList: 'User Feedback',
+    changelog: 'Software Changelog',
 };
 
 

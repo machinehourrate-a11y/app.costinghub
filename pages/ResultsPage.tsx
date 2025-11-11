@@ -1,6 +1,5 @@
 
 
-
 import React from 'react';
 import type { ResultsPageProps } from '../types';
 import { Card } from '../components/ui/Card';
@@ -8,7 +7,6 @@ import { Button } from '../components/ui/Button';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 
 export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, user }) => {
-  const currency = user.currency || 'USD';
 
   if (!calculation || !calculation.results) {
     return (
@@ -27,6 +25,8 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
       </div>
     );
   }
+  
+  const currency = calculation.inputs.currency || 'USD';
 
   return (
     <div className="w-full max-w-6xl mx-auto animate-fade-in">

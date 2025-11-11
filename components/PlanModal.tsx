@@ -25,7 +25,6 @@ type PlanFormState = {
 };
 
 
-// FIX: Added dummy `created_at` to satisfy the full SubscriptionPlan type.
 const BLANK_PLAN_FORM: PlanFormState = {
   name: '',
   prices: { USD: { price: 0 }, EUR: { price: 0 }, INR: { price: 0 } },

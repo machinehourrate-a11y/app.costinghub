@@ -1,11 +1,10 @@
-
 import React, { useState, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import type { Process, ProcessLibraryPageProps, ProcessParameter } from '../types';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { MACHINE_TYPES, DEFAULT_PROCESS_IDS, SUPER_ADMIN_EMAILS } from '../constants';
+import { MACHINE_TYPES, DEFAULT_PROCESS_NAMES, SUPER_ADMIN_EMAILS } from '../constants';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProcessModal } from '../components/ProcessModal';
 import { MultiProcessModal } from '../components/MultiProcessModal';
@@ -103,14 +102,13 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
     };
     
     const handleToggleSelectAll = () => {
-        const selectableIds = paginatedProcesses
-            .filter(p => isSuperAdmin && !DEFAULT_PROCESS_IDS.has(p.id))
-            .map(p => p.id);
+        const selectableProcesses = paginatedProcesses
+            .filter(p => !DEFAULT_PROCESS_NAMES.has(p.name) || isSuperAdmin);
             
-        if (selectedIds.length === selectableIds.length) {
+        if (selectedIds.length === selectableProcesses.length) {
             setSelectedIds([]);
         } else {
-            setSelectedIds(selectableIds);
+            setSelectedIds(selectableProcesses.map(p => p.id));
         }
     };
     
@@ -127,6 +125,11 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredProcesses.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredProcesses, currentPage]);
+  
+  const selectableProcesses = useMemo(() => 
+      paginatedProcesses.filter(p => !DEFAULT_PROCESS_NAMES.has(p.name) || isSuperAdmin),
+      [paginatedProcesses, isSuperAdmin]
+  );
 
   return (
     <div className="w-full mx-auto space-y-8 animate-fade-in">
@@ -163,16 +166,14 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-primary">Process Library</h2>
               <div className="flex items-center space-x-4">
-                 {isSuperAdmin ? (
-                    <>
-                        <Button variant="secondary" onClick={handleToggleSelectionMode}>
-                          {isSelectionMode ? 'Cancel' : 'Select'}
-                        </Button>
-                        <Button onClick={handleAddNew}>+ Add New Process</Button>
-                        <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
-                    </>
+                <Button variant="secondary" onClick={handleToggleSelectionMode}>
+                  {isSelectionMode ? 'Cancel' : 'Select'}
+                </Button>
+                <Button onClick={handleAddNew}>+ Add New Process</Button>
+                {isSuperAdmin ? (
+                  <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
                 ) : (
-                    <Button onClick={() => setIsRequestModalOpen(true)}>+ Request New Process</Button>
+                  <Button onClick={() => setIsRequestModalOpen(true)}>+ Request New Process</Button>
                 )}
               </div>
             </div>
@@ -197,7 +198,7 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
             </div>
         </div>
 
-        {isSelectionMode && isSuperAdmin && (
+        {isSelectionMode && (
             <div className="flex justify-between items-center bg-primary/10 p-3 rounded-lg mb-4 border border-primary/20">
                 <span className="font-semibold text-primary">{selectedIds.length} item(s) selected</span>
                 <div>
@@ -217,16 +218,17 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
           <table className="min-w-full divide-y divide-border">
             <thead className="bg-background/50">
               <tr>
-                 {isSelectionMode && isSuperAdmin && (
+                 {isSelectionMode && (
                     <th scope="col" className="px-4 py-3 w-12">
                         <input
                             type="checkbox"
                             className="h-4 w-4 text-primary bg-surface border-border rounded focus:ring-primary"
-                            checked={paginatedProcesses.length > 0 && selectedIds.length === paginatedProcesses.filter(p => isSuperAdmin && !DEFAULT_PROCESS_IDS.has(p.id)).length}
+                            checked={selectableProcesses.length > 0 && selectedIds.length === selectableProcesses.length}
                             onChange={handleToggleSelectAll}
                         />
                     </th>
                 )}
+                <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Image</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Process Name</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Group</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Compatible Machine Types</th>
@@ -235,8 +237,8 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
             </thead>
             <tbody className="bg-surface divide-y divide-border">
               {paginatedProcesses.length > 0 ? paginatedProcesses.map((process) => {
-                const isDefault = DEFAULT_PROCESS_IDS.has(process.id);
-                const canModify = isSuperAdmin && !isDefault;
+                const isDefault = DEFAULT_PROCESS_NAMES.has(process.name);
+                const canModify = !isDefault || isSuperAdmin;
                 return (
                 <tr 
                   key={process.id} 
@@ -249,7 +251,7 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
                       }
                   }}
                 >
-                  {isSelectionMode && isSuperAdmin && (
+                  {isSelectionMode && (
                       <td className="px-4 py-4">
                           <input
                               type="checkbox"
@@ -260,6 +262,15 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
                           />
                       </td>
                   )}
+                  <td className="px-4 py-4">
+                      <div className="h-12 w-16 bg-white rounded-md border border-border flex items-center justify-center">
+                         {process.imageUrl ? (
+                            <img src={process.imageUrl} alt={process.name} className="h-full w-full object-contain p-1" />
+                         ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                         )}
+                      </div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap font-medium text-primary">
                       {process.name}
                       {isDefault && <span className="ml-2 text-xs font-semibold rounded-full bg-surface text-text-secondary border border-border px-2 py-0.5">Default</span>}
@@ -273,17 +284,13 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    {isSuperAdmin && (
-                      <>
-                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(process); }} disabled={!canModify} title={!canModify ? "Default processes cannot be modified." : ""}>Edit</Button>
-                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(process); }} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} disabled={!canModify} title={!canModify ? "Default processes cannot be deleted." : ""}>Delete</Button>
-                      </>
-                    )}
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleEdit(process); }} disabled={!canModify} title={!canModify ? "Default processes cannot be modified." : ""}>Edit</Button>
+                    <Button variant="secondary" onClick={(e) => { e.stopPropagation(); handleDelete(process); }} className={canModify ? "text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400" : ""} disabled={!canModify} title={!canModify ? "Default processes cannot be deleted." : ""}>Delete</Button>
                   </td>
                 </tr>
               )}) : (
                  <tr>
-                    <td colSpan={isSelectionMode ? 5 : 4} className="text-center py-10 text-text-secondary">
+                    <td colSpan={isSelectionMode ? 6 : 5} className="text-center py-10 text-text-secondary">
                         No processes found matching your criteria.
                     </td>
                 </tr>
@@ -324,10 +331,20 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
       {selectedProcess ? (
         <Card>
             <h3 className="text-xl font-bold text-primary mb-4">{selectedProcess.name} Details</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                <div>
+                    <h4 className="text-md font-semibold text-text-secondary mb-2">Illustration</h4>
+                    <div className="aspect-[4/3] bg-white rounded-lg border border-border flex items-center justify-center overflow-hidden">
+                        {selectedProcess.imageUrl ? (
+                             <img src={selectedProcess.imageUrl} alt={selectedProcess.name} className="h-full w-full object-contain p-2"/>
+                        ) : (
+                            <span className="text-text-muted text-sm">No Image</span>
+                        )}
+                    </div>
+                </div>
                 <div>
                     <h4 className="text-md font-semibold text-text-secondary mb-2">Parameters</h4>
-                    <div className="bg-background/50 border border-border rounded-lg p-3 space-y-2">
+                    <div className="bg-background/50 border border-border rounded-lg p-3 space-y-2 mb-4">
                         {(selectedProcess.parameters as ProcessParameter[]).length > 0 ? (
                             (selectedProcess.parameters as ProcessParameter[]).map(param => (
                                 <div key={param.name} className="flex justify-between items-center text-sm">
@@ -339,8 +356,6 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
                             <p className="text-sm text-text-muted">No specific parameters for this process.</p>
                         )}
                     </div>
-                </div>
-                <div className="md:col-span-2">
                     <h4 className="text-md font-semibold text-text-secondary mb-2">Cycle Time Formula</h4>
                     <pre className="bg-background/50 border border-border rounded-lg p-4 text-sm text-primary whitespace-pre-wrap break-words font-mono">
                         {selectedProcess.formula || 'No formula defined.'}

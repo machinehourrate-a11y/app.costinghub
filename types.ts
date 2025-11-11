@@ -1,5 +1,3 @@
-
-
 // This file is self-contained and does not require auto-generated Supabase types.
 
 export type Json =
@@ -37,6 +35,26 @@ export interface RazorpayOptions {
   theme?: {
     color?: string;
   };
+}
+
+export interface RegionCost {
+  id: string;
+  item_id: string;
+  item_type: 'material' | 'machine' | 'tool';
+  region: string;
+  price: number;
+  currency: string;
+  valid_from: string; // YYYY-MM-DD
+  created_at?: string;
+  user_id?: string;
+}
+
+export interface RegionCurrencyMap {
+  id: string;
+  region: string;
+  currency: string;
+  user_id?: string;
+  created_at?: string;
 }
 
 export interface MaterialProperty {
@@ -85,6 +103,7 @@ export interface Process {
   compatibleMachineTypes: string[];
   parameters: ProcessParameter[] | Json;
   formula?: string;
+  imageUrl?: string;
   user_id?: string;
   created_at?: string;
 }
@@ -168,15 +187,19 @@ export interface Markups {
 export interface MachiningInput {
   // Metadata
   id: string;
+  original_id?: string; // To track showcase template ID
   calculationNumber: string;
   partNumber: string;
   partName: string; 
+  customerName: string;
   revision: string;
   partImage?: string; 
   createdAt: string;
   annualVolume: number; 
   batchVolume: number; 
   unitSystem: 'Metric' | 'Imperial';
+  region: string;
+  currency: string;
 
   // Material Details
   materialCategory: string;
@@ -194,6 +217,7 @@ export interface MachiningInput {
   materialCostPerKg: number; 
   materialDensityGcm3: number; 
   transportCostPerKg: number;
+  heatTreatmentCostPerKg: number;
   surfaceTreatments: SurfaceTreatment[];
 
   // Machining Operations & Setup
@@ -234,6 +258,7 @@ export interface MachiningResult {
   
   // Cost Analysis
   machiningCost: number;
+  toolCost: number;
   markupCosts: MarkupCosts;
   totalCost: number;
   costPerPart: number;
@@ -253,15 +278,25 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  address: string | null;
+  companyName: string | null;
+  company_logo_url: string | null;
+  phone: string | null;
+  phone_country_code: string | null;
+  address_line1: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string | null;
   calcNextNumber: number | null;
   calcPrefix: string | null;
-  calculations_created_this_period: number;
-  companyName: string | null;
-  currency: string | null;
-  phone: string | null;
   plan_id: string | null;
   subscription_status: string | null;
+  subscription_expires_on: string | null;
+  calculations_created_this_period: number;
+  company_website: string | null;
+  industry: string | null;
+  company_size: string | null;
+  tax_id: string | null;
 }
 
 export interface PriceInfo {
@@ -285,6 +320,9 @@ export interface SubscriptionPlan {
 export interface SettingsPageProps {
   user: User;
   onUpdateUser: (user: Partial<User>) => void;
+  plans: SubscriptionPlan[];
+  onNavigate: (view: View) => void;
+  isSuperAdmin: boolean;
 }
 
 export interface MaterialsPageProps {
@@ -323,12 +361,15 @@ export interface CalculatorPageProps {
   machines: Machine[];
   processes: Process[];
   tools: Tool[];
+  regionCosts: RegionCost[];
+  regionCurrencyMap: RegionCurrencyMap[];
   onSave: (calculation: Calculation) => void;
-  onSaveDraft: (draft: MachiningInput) => void;
-  onAutoSaveDraft: (draft: MachiningInput) => void;
+  onSaveDraft: (draft: Calculation) => void;
+  onAutoSaveDraft: (draft: Calculation) => void;
   onBack: () => void;
   user: User;
   existingCalculation: Calculation | null;
+  theme: 'light' | 'dark';
 }
 
 export interface DashboardPageProps {
@@ -355,6 +396,7 @@ export interface SubscriptionPageProps {
   user: User;
   isSuperAdmin: boolean;
   onUpgradePlan: (planId: string) => void;
+  onBack: () => void;
 }
 
 export interface SuperAdminPageProps {
@@ -373,11 +415,13 @@ export interface SubscriberInfo {
   subscription_status: string | null;
   calculation_count: number;
   subscribed_on: string;
+  subscription_expires_on: string | null;
 }
 
 export interface UserManagementPageProps {
   subscribers: SubscriberInfo[];
   theme: 'light' | 'dark';
+  plans: SubscriptionPlan[];
 }
 
 export interface ToolLibraryPageProps {
@@ -407,8 +451,8 @@ export interface Feedback {
   user_email: string;
   usage_duration: string;
   usage_experience: string;
-  feature_requests: string;
-  suggested_changes: string;
+  feature_requests: string | null;
+  suggested_changes: string | null;
   created_at?: string;
 }
 
@@ -416,6 +460,41 @@ export interface FeedbackPageProps {
   user: User;
   onSubmit: (feedbackData: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => Promise<void>;
 }
+
+export interface FeedbackListPageProps {
+  feedbacks: Feedback[];
+}
+
+export interface CostMasterPageProps {
+  materials: MaterialMasterItem[];
+  machines: Machine[];
+  tools: Tool[];
+  regionCosts: RegionCost[];
+  regionCurrencyMap: RegionCurrencyMap[];
+  user: User;
+  onUpdateMaterial: (material: MaterialMasterItem) => void;
+  onUpdateMachine: (machine: Machine) => void;
+  onUpdateTool: (tool: Tool) => void;
+  onAddRegionCost: (cost: Omit<RegionCost, 'id' | 'created_at' | 'user_id'>) => void;
+  onUpdateRegionCost: (cost: Pick<RegionCost, 'id' | 'price' | 'valid_from'>) => void;
+  onDeleteRegionCost: (costId: string) => void;
+  onAddRegionCurrency: (map: Omit<RegionCurrencyMap, 'id' | 'created_at' | 'user_id'>) => void;
+  onDeleteRegionCurrency: (id: string) => void;
+}
+
+export interface ChangeItem {
+  type: 'new' | 'improvement' | 'fix';
+  description: string;
+}
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  title: string;
+  changes: ChangeItem[];
+}
+
+export interface ChangelogPageProps {}
 
 export type View = 
   | 'auth'
@@ -431,4 +510,7 @@ export type View =
   | 'subscription' 
   | 'toolLibrary' 
   | 'subscribersList'
-  | 'feedback';
+  | 'costMaster'
+  | 'feedback'
+  | 'feedbackList'
+  | 'changelog';

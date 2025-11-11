@@ -1,10 +1,3 @@
-
-
-
-
-
-
-
 export type Json =
   | string
   | number
@@ -49,6 +42,47 @@ export interface Database {
             referencedRelation: "users"
             referencedColumns: ["id"]
           }
+        ]
+      }
+      feedback: {
+        Row: {
+          created_at: string
+          feature_requests: string | null
+          id: string
+          suggested_changes: string | null
+          usage_duration: string
+          usage_experience: string
+          user_email: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature_requests?: string | null
+          id?: string
+          suggested_changes?: string | null
+          usage_duration: string
+          usage_experience: string
+          user_email: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feature_requests?: string | null
+          id?: string
+          suggested_changes?: string | null
+          usage_duration?: string
+          usage_experience?: string
+          user_email?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "feedback_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
         ]
       }
       machines: {
@@ -151,6 +185,7 @@ export interface Database {
           created_at: string
           group: string
           id: string
+          imageUrl: string | null
           name: string
           parameters: Json
           formula: string | null
@@ -161,6 +196,7 @@ export interface Database {
           created_at?: string
           group: string
           id: string
+          imageUrl?: string | null
           name: string
           parameters: Json
           formula?: string | null
@@ -171,6 +207,7 @@ export interface Database {
           created_at?: string
           group?: string
           id?: string
+          imageUrl?: string | null
           name?: string
           parameters?: Json
           formula?: string | null
@@ -188,46 +225,76 @@ export interface Database {
       }
       profiles: {
         Row: {
-          address: string | null
+          address_line1: string | null
           calcNextNumber: number | null
           calcPrefix: string | null
           calculations_created_this_period: number
+          city: string | null
           companyName: string | null
-          currency: string | null
+          company_logo_url: string | null
+          country: string | null
           email: string
           id: string
           name: string
           phone: string | null
+          phone_country_code: string | null
           plan_id: string | null
+          postal_code: string | null
+          state: string | null
           subscription_status: string | null
+          subscription_expires_on: string | null
+          company_website: string | null
+          industry: string | null
+          company_size: string | null
+          tax_id: string | null
         }
         Insert: {
-          address?: string | null
+          address_line1?: string | null
           calcNextNumber?: number | null
           calcPrefix?: string | null
           calculations_created_this_period?: number
+          city?: string | null
           companyName?: string | null
-          currency?: string | null
+          company_logo_url?: string | null
+          country?: string | null
           email: string
           id: string
           name: string
           phone?: string | null
+          phone_country_code?: string | null
           plan_id?: string | null
+          postal_code?: string | null
+          state?: string | null
           subscription_status?: string | null
+          subscription_expires_on?: string | null
+          company_website?: string | null
+          industry?: string | null
+          company_size?: string | null
+          tax_id?: string | null
         }
         Update: {
-          address?: string | null
+          address_line1?: string | null
           calcNextNumber?: number | null
           calcPrefix?: string | null
           calculations_created_this_period?: number
+          city?: string | null
           companyName?: string | null
-          currency?: string | null
+          company_logo_url?: string | null
+          country?: string | null
           email?: string
           id?: string
           name?: string
           phone?: string | null
+          phone_country_code?: string | null
           plan_id?: string | null
+          postal_code?: string | null
+          state?: string | null
           subscription_status?: string | null
+          subscription_expires_on?: string | null
+          company_website?: string | null
+          industry?: string | null
+          company_size?: string | null
+          tax_id?: string | null
         }
         Relationships: [
           {
@@ -242,6 +309,82 @@ export interface Database {
             columns: ["plan_id"]
             isOneToOne: false
             referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      region_costs: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          item_id: string
+          item_type: "material" | "machine" | "tool"
+          price: number
+          region: string
+          user_id: string
+          valid_from: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          id?: string
+          item_id: string
+          item_type: "material" | "machine" | "tool"
+          price: number
+          region: string
+          user_id: string
+          valid_from: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          item_id?: string
+          item_type?: "material" | "machine" | "tool"
+          price?: number
+          region?: string
+          user_id?: string
+          valid_from?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "region_costs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      region_currency_map: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          region: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency: string
+          id?: string
+          region: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          region?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "region_currency_map_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           }
         ]
@@ -375,6 +518,7 @@ export interface Database {
           subscription_status: string
           calculation_count: number
           subscribed_on: string
+          subscription_expires_on: string | null
         }[]
       }
     }
