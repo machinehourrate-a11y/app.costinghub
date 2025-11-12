@@ -112,3 +112,8 @@ To connect a custom domain to your Netlify site:
 ## Notes
 - A minimal `netlify.toml` is included in the repo setting the build command and publish directory.
 - Build logs and function logs are available in the Netlify dashboard under **Logs**.
+
+define: {
+  'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+  'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+}
