@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-to-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CostingHub - Manufacturing Cost & Cycle Time Calculator</title>
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --color-primary: #8b5cf6; /* Violet */
+        --color-primary-hover: #7c3aed;
+        --color-primary-rgb: 139, 92, 246;
+        --color-secondary-accent: #ec4899; /* Pink */
+        --color-background: #0D0D0D; /* Near Black */
+        --color-surface: #1A1A1A;    /* Dark Gray */
+        --color-text-primary: #FFFFFF; /* White */
+        --color-text-secondary: #A0A0A0; /* Light Gray */
+        --color-text-muted: #6B7280;   /* Medium Gray */
+        --color-border: #2D2D2D;     /* Dark Border */
+        --color-text-input: var(--color-primary);
+      }
+      [data-theme="light"] {
+        --color-primary: #8b5cf6; /* Violet */
+        --color-primary-hover: #7c3aed;
+        --color-primary-rgb: 139, 92, 246;
+        --color-secondary-accent: #ec4899; /* Pink */
+        --color-background: #F9FAFB; /* Very Light Gray */
+        --color-surface: #FFFFFF;    /* White */
+        --color-text-primary: #1F2937; /* Dark Gray / Black */
+        --color-text-secondary: #6B7280; /* Medium Gray */
+        --color-text-muted: #9CA3AF;   /* Light Gray */
+        --color-border: #E5E7EB;     /* Light Border */
+        --color-text-input: #000000; /* Black */
+      }
+      body {
+        background-color: var(--color-background);
+        color: var(--color-text-primary);
+      }
+      /* Style dropdown options for dark theme consistency */
+      select option {
+        background-color: var(--color-surface);
+        color: var(--color-text-input);
+      }
+       /* Style dropdown options for light theme */
+      [data-theme="light"] select option {
+        background-color: var(--color-surface);
+        color: var(--color-text-primary);
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              background: 'var(--color-background)',
+              surface: 'var(--color-surface)',
+              primary: 'var(--color-primary)',
+              'primary-hover': 'var(--color-primary-hover)',
+              'secondary-accent': 'var(--color-secondary-accent)',
+              'text-primary': 'var(--color-text-primary)',
+              'text-secondary': 'var(--color-text-secondary)',
+              'text-muted': 'var(--color-text-muted)',
+              border: 'var(--color-border)',
+              'text-input': 'var(--color-text-input)',
+            },
+            boxShadow: {
+              'glow-primary': '0 0 5px var(--color-primary), 0 0 10px var(--color-primary)',
+              'glow-primary-md': '0 0 8px var(--color-primary), 0 0 15px var(--color-primary)',
+            },
+            keyframes: {
+              'fade-in': {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+            },
+            animation: {
+              'fade-in': 'fade-in 0.5s ease-in-out',
+            },
+          },
+        },
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "chart.js": "https://aistudiocdn.com/chart.js@^4.4.3",
+    "react-chartjs-2": "https://aistudiocdn.com/react-chartjs-2@^5.2.0",
+    "date-fns": "https://aistudiocdn.com/date-fns@^3.6.0",
+    "chartjs-plugin-datalabels": "https://aistudiocdn.com/chartjs-plugin-datalabels@^2.2.0",
+    "@supabase/supabase-js": "https://aistudiocdn.com/@supabase/supabase-js@^2.78.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-background text-text-primary antialiased">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
