@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #8b5cf6; /* Violet */
+  --color-primary-hover: #7c3aed;
+  --color-primary-rgb: 139, 92, 246;
+  --color-secondary-accent: #ec4899; /* Pink */
+  --color-background: #0D0D0D; /* Near Black */
+  --color-surface: #1A1A1A;    /* Dark Gray */
+  --color-text-primary: #FFFFFF; /* White */
+  --color-text-secondary: #A0A0A0; /* Light Gray */
+  --color-text-muted: #6B7280;   /* Medium Gray */
+  --color-border: #2D2D2D;     /* Dark Border */
+  --color-text-input: var(--color-primary);
+}
+
+[data-theme="light"] {
+  --color-primary: #8b5cf6; /* Violet */
+  --color-primary-hover: #7c3aed;
+  --color-primary-rgb: 139, 92, 246;
+  --color-secondary-accent: #ec4899; /* Pink */
+  --color-background: #F9FAFB; /* Very Light Gray */
+  --color-surface: #FFFFFF;    /* White */
+  --color-text-primary: #1F2937; /* Dark Gray / Black */
+  --color-text-secondary: #6B7280; /* Medium Gray */
+  --color-text-muted: #9CA3AF;   /* Light Gray */
+  --color-border: #E5E7EB;     /* Light Border */
+  --color-text-input: #000000; /* Black */
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+}
+
+/* Style dropdown options for dark theme consistency */
+select option {
+  background-color: var(--color-surface);
+  color: var(--color-text-input);
+}
+
+/* Style dropdown options for light theme */
+[data-theme="light"] select option {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
