@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
-import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups, RegionCost, RegionCurrencyMap } from '../types';
+import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups, RegionCost, RegionCurrencyMap, Tool } from '../types';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -898,7 +898,9 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                                         <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool</th>
                                                         <th className="px-3 py-2 text-left font-medium text-text-secondary">Parameters</th>
                                                         <th className="px-3 py-2 text-left font-medium text-text-secondary">Cycle Time</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Cost</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Op. Tool Life (hrs)</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Machine Cost</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool Cost</th>
                                                         <th className="px-3 py-2 text-right font-medium text-text-secondary">Actions</th>
                                                     </tr>
                                                 </thead>
@@ -907,7 +909,18 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                                         const processDef = processes.find(p => p.name === op.processName);
                                                         const selectedTool = tools.find(t => t.id === op.toolId);
                                                         const time = calculateOperationTime(op, processDef!, selectedTool || null) / (setup.efficiency || 1);
-                                                        const cost = machinePriceInfo.price > 0 ? (time / 60) * machinePriceInfo.price : 0;
+                                                        const machineCost = machinePriceInfo.price > 0 ? (time / 60) * machinePriceInfo.price : 0;
+                                                        
+                                                        let opToolCost = 0;
+                                                        if (selectedTool && selectedTool.price != null && selectedTool.price > 0) {
+                                                            const regionalToolPriceInfo = getPriceInfo(selectedTool.id, 'tool', formData.region, selectedTool.price, selectedTool.name);
+                                                            const toolLifeHours = op.estimatedToolLifeHours ?? selectedTool.estimatedLife;
+                                                            if (toolLifeHours != null && toolLifeHours > 0) {
+                                                                const toolLifeMinutes = toolLifeHours * 60;
+                                                                opToolCost = (time / toolLifeMinutes) * regionalToolPriceInfo.price;
+                                                            }
+                                                        }
+
                                                         return (
                                                             <tr key={op.id} className="hover:bg-background/40">
                                                                 <td className="px-3 py-2 text-text-secondary">{opIndex + 1}</td>
@@ -915,7 +928,9 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                                                 <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{selectedTool?.name || 'N/A'}</td>
                                                                 <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{formatParameters(op, processDef)}</td>
                                                                 <td className="px-3 py-2 text-text-primary font-medium">{time.toFixed(2)} min</td>
-                                                                <td className="px-3 py-2 text-green-500 font-medium">{formatCurrency(cost)}</td>
+                                                                <td className="px-3 py-2 text-text-primary font-medium">{op.estimatedToolLifeHours?.toFixed(1) ?? 'N/A'}</td>
+                                                                <td className="px-3 py-2 text-green-500 font-medium">{formatCurrency(machineCost)}</td>
+                                                                <td className="px-3 py-2 text-orange-500 font-medium">{formatCurrency(opToolCost)}</td>
                                                                 <td className="px-3 py-2 text-right space-x-2">
                                                                     <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => handleOpenOperationModal(setup.id, op)}>Edit</Button>
                                                                     <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs text-red-500 hover:bg-red-500/10" onClick={() => removeOperation(setup.id, op.id)}>Delete</Button>

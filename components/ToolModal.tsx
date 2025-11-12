@@ -14,7 +14,7 @@ interface ToolModalProps {
   currency: string;
 }
 
-const BLANK_TOOL: Omit<Tool, 'id' | 'created_at' | 'user_id'> = {
+const BLANK_TOOL: Omit<Tool, 'id' | 'created_at' | 'user_id' | 'price'> = {
   name: '',
   brand: '',
   model: '',
@@ -30,18 +30,17 @@ const BLANK_TOOL: Omit<Tool, 'id' | 'created_at' | 'user_id'> = {
   speedRpm: null,
   feedRate: null,
   estimatedLife: null,
-  price: null,
 };
 
 export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, currency }) => {
-  const [formData, setFormData] = useState<Omit<Tool, 'id' | 'created_at' | 'user_id'>>(() => tool || BLANK_TOOL);
+  const [formData, setFormData] = useState<Omit<Tool, 'id' | 'created_at' | 'user_id' | 'price'>>(() => tool ? { ...tool } : BLANK_TOOL);
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
   const [isCalculatingLife, setIsCalculatingLife] = useState(false);
 
   useEffect(() => {
-    setFormData(tool || BLANK_TOOL);
+    setFormData(tool ? { ...tool } : BLANK_TOOL);
   }, [tool]);
   
   // Auto-calculation and auto-naming effect
@@ -74,7 +73,7 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
     const type = (e.target as HTMLInputElement).type;
     
     if (type === 'number') {
-      const isNullable = ['cornerRadius', 'cuttingSpeedVc', 'feedPerTooth', 'numberOfTeeth', 'price', 'estimatedLife'].includes(name);
+      const isNullable = ['cornerRadius', 'cuttingSpeedVc', 'feedPerTooth', 'numberOfTeeth', 'estimatedLife'].includes(name);
       if (value === '') {
         setFormData(prev => ({ ...prev, [name]: isNullable ? null : 0 }));
       } else {
@@ -114,7 +113,9 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
 
   const handleCalculateLife = async () => {
     setIsCalculatingLife(true);
-    const life = await calculateToolLife(formData);
+    // FIX: The `calculateToolLife` function expects a `price` property, which is missing from `formData`.
+    // We construct a temporary object that includes the price to satisfy the type signature.
+    const life = await calculateToolLife({ ...formData, price: tool?.price ?? null });
     if (life !== null) {
       setFormData(prev => ({ ...prev, estimatedLife: life }));
     } else {
@@ -128,6 +129,7 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
     e.preventDefault();
     const toolToSave: Tool = {
         id: tool?.id || new Date().toISOString() + Math.random(),
+        price: tool?.price || null, // Preserve existing price, or default for new
         ...formData,
     };
     onSave(toolToSave);
@@ -189,7 +191,6 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
             
             <h3 className="text-lg font-semibold text-primary mt-4 border-t border-border pt-4">Commercial Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <Input label="Price" name="price" type="number" step="any" value={formData.price ?? ''} onChange={handleInputChange} unit={currency} placeholder="e.g., 85.50" />
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-1">Estimated Life</label>
                   <div className="flex items-center space-x-2">

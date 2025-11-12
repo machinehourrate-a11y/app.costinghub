@@ -13,11 +13,10 @@ interface MachineModalProps {
   onClose: () => void;
 }
 
-const BLANK_MACHINE: Omit<Machine, 'id' | 'created_at' | 'user_id'> = {
+const BLANK_MACHINE: Omit<Machine, 'id' | 'created_at' | 'user_id' | 'hourlyRate'> = {
   name: '',
   brand: '',
   model: '',
-  hourlyRate: 60,
   machineType: 'CNC Mill',
   xAxis: 0,
   yAxis: 0,
@@ -27,13 +26,13 @@ const BLANK_MACHINE: Omit<Machine, 'id' | 'created_at' | 'user_id'> = {
 };
 
 export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onClose }) => {
-  const [formData, setFormData] = useState<Omit<Machine, 'id' | 'created_at' | 'user_id'>>(() => machine || BLANK_MACHINE);
+  const [formData, setFormData] = useState<Omit<Machine, 'id' | 'created_at' | 'user_id' | 'hourlyRate'>>(() => machine ? { ...machine } : BLANK_MACHINE);
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
 
   useEffect(() => {
-    setFormData(machine || BLANK_MACHINE);
+    setFormData(machine ? { ...machine } : BLANK_MACHINE);
   }, [machine]);
 
   useEffect(() => {
@@ -54,7 +53,7 @@ export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onC
     setIsSuggesting(true);
     setSuggestionError('');
     try {
-        const suggestion = await suggestMachine(suggestionPrompt, 'USD'); // Assuming USD for now
+        const suggestion = await suggestMachine(suggestionPrompt);
         if (suggestion) {
             setFormData(prev => ({ ...prev, ...suggestion }));
         } else {
@@ -72,6 +71,7 @@ export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onC
     e.preventDefault();
     const machineToSave: Machine = {
         id: machine?.id || new Date().toISOString() + Math.random(),
+        hourlyRate: machine?.hourlyRate || 0, // Preserve existing rate, or default for new
         ...formData,
     };
     onSave(machineToSave);
@@ -113,7 +113,6 @@ export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onC
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Machine Name (Auto-generated)" name="name" value={formData.name} onChange={() => {}} disabled />
-              <Input label="Machine Rate / hr" name="hourlyRate" type="number" step="any" value={formData.hourlyRate} onChange={handleInputChange} unit="USD" required />
             </div>
 
             <Select label="Machine Type" name="machineType" value={formData.machineType} onChange={handleInputChange}>

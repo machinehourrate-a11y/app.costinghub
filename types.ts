@@ -137,6 +137,7 @@ export interface Operation {
   parameters: { [key: string]: number };
   toolId?: string;
   toolName?: string;
+  estimatedToolLifeHours?: number;
 }
 
 export interface Setup {

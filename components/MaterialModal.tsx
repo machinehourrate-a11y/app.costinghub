@@ -11,7 +11,6 @@ interface MaterialModalProps {
   onSave: (material: MaterialMasterItem) => void;
   onClose: () => void;
   allProperties: string[];
-  currency: string;
 }
 
 const BLANK_MATERIAL: Omit<MaterialMasterItem, 'id'> = {
@@ -38,7 +37,7 @@ const PropertyInput: React.FC<{
     />
 );
 
-export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, onClose, allProperties, currency }) => {
+export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, onClose, allProperties }) => {
   const [formData, setFormData] = useState<Omit<MaterialMasterItem, 'id'>>(() => material || BLANK_MATERIAL);
   const [newPropName, setNewPropName] = useState('');
   const [newPropValue, setNewPropValue] = useState('');
@@ -107,7 +106,7 @@ export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, 
     setIsSuggesting(true);
     setSuggestionError('');
     try {
-        const suggestion = await suggestMaterial(suggestionPrompt, currency);
+        const suggestion = await suggestMaterial(suggestionPrompt);
         if (suggestion) {
             setFormData({
                 name: suggestion.name,
@@ -163,7 +162,6 @@ export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, 
             <Input label="Sub-Category" name="subCategory" value={formData.subCategory || ''} onChange={handleInputChange} placeholder="e.g., Low Carbon Steel" />
             
             <div className="space-y-4">
-                <PropertyInput propName="Cost Per Kg" value={properties["Cost Per Kg"]} onChange={handlePropertyChange} unit={currency} />
                 <PropertyInput propName="Density" value={properties["Density"]} onChange={handlePropertyChange} unit="g/cm³" />
             </div>
 

@@ -1,8 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool } from '../types';
+import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool, Operation } from '../types';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+// FIX: Per coding guidelines, the API key must be sourced from `process.env.API_KEY`.
+// This also resolves the TypeScript error "Property 'env' does not exist on type 'ImportMeta'".
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
  * Cleans and parses a JSON string that might be wrapped in markdown code fences.
@@ -69,13 +71,6 @@ const materialResponseSchema = {
                         unit: { type: Type.STRING, description: "The unit of measurement, must be 'g/cm³'." }
                     }
                 },
-                "Cost Per Kg": {
-                    type: Type.OBJECT,
-                    properties: {
-                        value: { type: Type.NUMBER, description: "The estimated cost per kilogram." },
-                        unit: { type: Type.STRING, description: "The currency symbol." }
-                    }
-                },
                 "Tensile Strength, Ultimate": {
                     type: Type.OBJECT,
                     properties: {
@@ -138,11 +133,11 @@ const materialResponseSchema = {
     required: ["name", "category", "properties"]
 };
 
-export const suggestMaterial = async (prompt: string, currency: string): Promise<GeminiSuggestion | null> => {
+export const suggestMaterial = async (prompt: string): Promise<GeminiSuggestion | null> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Based on the following description, provide a detailed material profile. The currency for 'Cost Per Kg' must be ${currency}. Description: "${prompt}"`,
+            contents: `Based on the following description, provide a detailed material profile. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: materialResponseSchema,
@@ -156,11 +151,6 @@ export const suggestMaterial = async (prompt: string, currency: string): Promise
             return null;
         }
 
-        // Ensure properties exist before accessing them
-        if (suggestedData.properties && suggestedData.properties['Cost Per Kg']) {
-            suggestedData.properties['Cost Per Kg'].unit = currency;
-        }
-
         return suggestedData as GeminiSuggestion;
     } catch (error) {
         console.error("Error calling Gemini API for material suggestion:", error);
@@ -168,11 +158,11 @@ export const suggestMaterial = async (prompt: string, currency: string): Promise
     }
 };
 
-export const suggestMultipleMaterials = async (prompt: string, currency: string): Promise<Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleMaterials = async (prompt: string): Promise<Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[] | null> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: `Based on the following request, provide a list of detailed material profiles. The currency for 'Cost Per Kg' must be ${currency}. Request: "${prompt}"`,
+            contents: `Based on the following request, provide a list of detailed material profiles. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: { type: Type.ARRAY, items: materialResponseSchema },
@@ -188,11 +178,6 @@ export const suggestMultipleMaterials = async (prompt: string, currency: string)
 
         const typedSuggestions = suggestedData as GeminiSuggestion[];
         
-        typedSuggestions.forEach(material => {
-            if (material.properties && material.properties['Cost Per Kg']) {
-                material.properties['Cost Per Kg'].unit = currency;
-            }
-        });
         return typedSuggestions;
     } catch (error) {
         console.error("Error calling Gemini API for multiple material suggestion:", error);
@@ -215,7 +200,6 @@ const toolResponseSchema = {
         cuttingSpeedVc: { type: Type.NUMBER, description: "Recommended cutting speed (Vc) in m/min for a common workpiece material like mild steel or aluminum. Null if not applicable." },
         feedPerTooth: { type: Type.NUMBER, description: "Recommended feed per tooth in mm for a common workpiece material. Null if not applicable." },
         estimatedLife: { type: Type.NUMBER, description: "Estimated tool life in hours under normal usage. Null if unknown." },
-        price: { type: Type.NUMBER, description: "Estimated price of the tool in a standard currency like USD. Null if unknown." },
     },
     required: ["brand", "model", "toolType", "material", "diameter", "arborOrInsert", "compatibleMachineTypes"]
 };
@@ -224,7 +208,7 @@ export const suggestTool = async (prompt: string): Promise<GeminiToolSuggestion 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Based on the following description, provide a detailed tool profile including brand, model, price, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
+            contents: `Based on the following description, provide a detailed tool profile including brand, model, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: toolResponseSchema,
@@ -255,7 +239,7 @@ export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, '
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: `Based on the following request, provide a list of detailed tool profiles including brand, model, price, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
+            contents: `Based on the following request, provide a list of detailed tool profiles including brand, model, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: { type: Type.ARRAY, items: toolResponseSchema },
@@ -348,6 +332,70 @@ export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'cre
     }
 };
 
+const operationToolLifeResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        estimatedLife: { 
+            type: Type.NUMBER, 
+            description: "The calculated estimated tool life in hours for this specific operation." 
+        }
+    },
+    required: ["estimatedLife"]
+};
+
+export const calculateOperationToolLife = async (tool: Tool, operation: Operation, process: Process): Promise<number | null> => {
+    const paramsString = (process.parameters as any[])
+        .map((p: any) => `- ${p.label}: ${operation.parameters[p.name] ?? 'N/A'} ${p.unit}`)
+        .join('\n');
+
+    const prompt = `
+        Given a tool and a specific manufacturing operation, calculate the estimated tool life in hours FOR THIS OPERATION ONLY.
+
+        Tool Details:
+        - Tool Type: ${tool.toolType}
+        - Tool Material: ${tool.material}
+        - Diameter: ${tool.diameter} mm
+        - Number of Teeth: ${tool.numberOfTeeth ?? 'N/A'}
+
+        Operation Details:
+        - Process: ${operation.processName}
+        - Workpiece Material (assumed): Mild Steel or Aluminum
+        - Cutting Parameters:
+          - Cutting Speed (Vc): ${operation.parameters.cuttingSpeed ?? tool.cuttingSpeedVc ?? 'N/A'} m/min
+          - Feed per Tooth (fz): ${operation.parameters.feedPerTooth ?? tool.feedPerTooth ?? 'N/A'} mm
+        - Other Process Parameters:
+        ${paramsString}
+
+        Considering the specific cutting parameters and process which cause wear, provide only the numeric value for the estimated life in hours.
+    `;
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: operationToolLifeResponseSchema,
+            },
+        });
+        const result = cleanAndParseJson(response.text);
+
+        if (!result) {
+            console.error("Parsing Gemini response for operation tool life resulted in null.");
+            return null;
+        }
+        
+        if (typeof result.estimatedLife === 'number') {
+            return Math.round(result.estimatedLife);
+        }
+        
+        return null;
+    } catch (error) {
+        console.error("Error calling Gemini API for operation tool life calculation:", error);
+        return null;
+    }
+};
+
+
 const processResponseSchema = {
     type: Type.OBJECT,
     properties: {
@@ -420,12 +468,11 @@ export const suggestMultipleProcesses = async (prompt: string): Promise<Omit<Pro
     }
 };
 
-const machineResponseSchema = (currency: string) => ({
+const machineResponseSchema = {
     type: Type.OBJECT,
     properties: {
         brand: { type: Type.STRING, description: "The manufacturer of the machine, e.g., 'HAAS'." },
         model: { type: Type.STRING, description: "The model name/number, e.g., 'VF-2'." },
-        hourlyRate: { type: Type.NUMBER, description: `The typical hourly operational cost in ${currency}.` },
         machineType: { type: Type.STRING, enum: MACHINE_TYPES },
         xAxis: { type: Type.NUMBER, description: "The X-axis travel in mm." },
         yAxis: { type: Type.NUMBER, description: "The Y-axis travel in mm." },
@@ -433,17 +480,17 @@ const machineResponseSchema = (currency: string) => ({
         powerKw: { type: Type.NUMBER, description: "The spindle power in kilowatts (kW)." },
         additionalAxis: { type: Type.STRING, enum: ADDITIONAL_AXIS_OPTIONS },
     },
-    required: ["brand", "model", "hourlyRate", "machineType", "xAxis", "yAxis", "zAxis", "powerKw", "additionalAxis"]
-});
+    required: ["brand", "model", "machineType", "xAxis", "yAxis", "zAxis", "powerKw", "additionalAxis"]
+};
 
-export const suggestMachine = async (prompt: string, currency: string): Promise<GeminiMachineSuggestion | null> => {
+export const suggestMachine = async (prompt: string): Promise<GeminiMachineSuggestion | null> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: `Based on the following description, provide a detailed machine profile. The currency for 'hourlyRate' must be ${currency}. Description: "${prompt}"`,
+            contents: `Based on the following description, provide a detailed machine profile. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: machineResponseSchema(currency),
+                responseSchema: machineResponseSchema,
             },
         });
         const suggestion = cleanAndParseJson(response.text);
@@ -458,14 +505,14 @@ export const suggestMachine = async (prompt: string, currency: string): Promise<
     }
 };
 
-export const suggestMultipleMachines = async (prompt: string, currency: string): Promise<Omit<Machine, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleMachines = async (prompt: string): Promise<Omit<Machine, 'id' | 'user_id' | 'created_at'>[] | null> => {
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-pro',
-            contents: `Based on the following request, provide a list of detailed machine profiles. The currency for 'hourlyRate' must be ${currency}. Request: "${prompt}"`,
+            contents: `Based on the following request, provide a list of detailed machine profiles. Request: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: { type: Type.ARRAY, items: machineResponseSchema(currency) },
+                responseSchema: { type: Type.ARRAY, items: machineResponseSchema },
             },
         });
         const suggestions = cleanAndParseJson(response.text);

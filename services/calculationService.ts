@@ -143,7 +143,8 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
   // 3. Differentiate between process groups for accurate speed/feed calculations
   if (process.group === 'Turning') {
     // --- TURNING LOGIC ---
-    // For lathe tools, 'feedPerTooth' is used to store feedPerRev.
+    // For lathe tools, 'feedPerTooth' from the tool library is used to store feedPerRev.
+    // We prioritize the operation-specific override 'feedPerRev'.
     const feedPerRev = operation.parameters.feedPerRev ?? tool?.feedPerTooth ?? 0;
     
     // For turning, RPM is based on workpiece diameter, not tool diameter (except for drilling)
@@ -185,8 +186,9 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
     }
   } else {
     // --- MILLING/OTHER LOGIC ---
+    // Prioritize the operation-specific override 'feedPerTooth'.
     const feedPerTooth = operation.parameters.feedPerTooth ?? tool?.feedPerTooth ?? 0;
-    const numberOfTeeth = operation.parameters.numberOfTeeth ?? tool?.numberOfTeeth ?? 1;
+    const numberOfTeeth = tool?.numberOfTeeth ?? 1;
 
     if (toolDiameter > 0 && cuttingSpeed > 0) {
       spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
@@ -294,12 +296,17 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
           const rawOpTimeMin = processDef ? calculateOperationTime(op, processDef, tool) : 0;
           const effectiveOpTimeMin = rawOpTimeMin / efficiencyDivisor;
           
-          if (tool && tool.price != null && tool.price > 0 && tool.estimatedLife != null && tool.estimatedLife > 0) {
+          // Tool Cost Calculation for this operation
+          if (tool && tool.price != null && tool.price > 0) {
             const regionalToolPrice = getConvertedPrice(tool.id, 'tool', region, regionCosts, tool.price, targetCurrency);
-            const toolLifeMinutes = tool.estimatedLife * 60;
-            if (toolLifeMinutes > 0) {
-              const opToolCostForBatch = (effectiveOpTimeMin * batchVolume / toolLifeMinutes) * regionalToolPrice;
-              totalToolCostForBatch += opToolCostForBatch;
+            // Prioritize operation-specific tool life, fallback to library tool life.
+            const toolLifeHours = op.estimatedToolLifeHours ?? tool.estimatedLife;
+            if (toolLifeHours != null && toolLifeHours > 0) {
+              const toolLifeMinutes = toolLifeHours * 60;
+              const toolCostPerMinute = regionalToolPrice / toolLifeMinutes;
+              // User formula: Operation Tool Cost = Tool Cost/Min * Operation Cycle Time
+              const opToolCost = toolCostPerMinute * effectiveOpTimeMin;
+              totalToolCostForBatch += opToolCost * batchVolume;
             }
           }
 

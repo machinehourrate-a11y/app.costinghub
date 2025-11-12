@@ -25,7 +25,7 @@ export const MultiMachineModal: React.FC<MultiMachineModalProps> = ({ onSave, on
     setSuggestions([]);
     setSelectedIndices([]);
     try {
-      const result = await suggestMultipleMachines(prompt, 'USD'); // Assume USD for now
+      const result = await suggestMultipleMachines(prompt);
       if (result) {
         setSuggestions(result);
         setSelectedIndices(result.map((_, index) => index));

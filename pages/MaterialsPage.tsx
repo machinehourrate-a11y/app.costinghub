@@ -71,7 +71,6 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
     
     const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
-    const currency = 'USD'; // Default currency for library pages
     
     const allProperties = useMemo(() => {
         const props = new Set<string>();
@@ -209,14 +208,12 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                     onSave={handleSaveMaterial}
                     onClose={() => setIsModalOpen(false)}
                     allProperties={allProperties}
-                    currency={currency}
                 />
             )}
             {isMultiModalOpen && (
                 <MultiMaterialModal
                     onClose={() => setIsMultiModalOpen(false)}
                     onSave={handleAddMultiple}
-                    currency={currency}
                 />
             )}
             {materialToDelete && (

@@ -8,6 +8,7 @@ import { CloseIcon } from './ui/CloseIcon';
 import type { Operation, Process, ProcessParameter, Tool, Machine, Setup } from '../types';
 import { calculateOperationTime } from '../services/calculationService';
 import { ToolSelectionModal } from './ToolSelectionModal';
+import { calculateOperationToolLife } from '../services/geminiService';
 
 const uuid = () => `id_${Math.random().toString(36).substring(2, 9)}`;
 
@@ -30,157 +31,246 @@ export const OperationModal: React.FC<OperationModalProps> = ({
     isOpen, onClose, onSave, setup, operationToEdit,
     processes, tools, machines, isMetric, getDisplayValue, getMetricValue, formatCurrency
 }) => {
-    const [processName, setProcessName] = useState('');
-    const [toolId, setToolId] = useState<string | undefined>();
-    const [parameters, setParameters] = useState<{ [key: string]: number }>({});
+    const [formData, setFormData] = useState<Partial<Operation>>({});
     const [isToolModalOpen, setIsToolModalOpen] = useState(false);
+    const [isCalculatingLife, setIsCalculatingLife] = useState(false);
 
     const machineForSetup = useMemo(() => machines.find(m => m.id === setup.machineId), [setup.machineId, machines]);
     const availableProcesses = useMemo(() => machineForSetup ? processes.filter(p => p.compatibleMachineTypes.includes(machineForSetup.machineType)) : [], [machineForSetup, processes]);
     
+    // Initialize form data
     useEffect(() => {
         if (isOpen) {
-            const initialProcessName = operationToEdit?.processName || availableProcesses[0]?.name || '';
-            setProcessName(initialProcessName);
-            setToolId(operationToEdit?.toolId);
-
-            const processDef = processes.find(p => p.name === initialProcessName);
-            const processParams = (processDef?.parameters as ProcessParameter[]) || [];
-            const initialParams = processParams.reduce((acc, p) => ({
-                ...acc,
-                [p.name]: operationToEdit?.parameters[p.name] || 0
-            }), {});
-            setParameters(initialParams);
+            if (operationToEdit) {
+                setFormData(operationToEdit);
+            } else {
+                // Set default for a new operation
+                const defaultProcessName = availableProcesses[0]?.name || '';
+                setFormData({
+                    processName: defaultProcessName,
+                    parameters: {},
+                });
+            }
         }
-    }, [isOpen, operationToEdit, availableProcesses, processes]);
+    }, [isOpen, operationToEdit, availableProcesses]);
     
-    const handleProcessChange = useCallback((newProcessName: string) => {
-        setProcessName(newProcessName);
-        const processDef = processes.find(p => p.name === newProcessName);
-        const processParams = (processDef?.parameters as ProcessParameter[]) || [];
-        // Preserve existing parameter values if their names match
-        const newParameters = processParams.reduce((acc, p) => ({ ...acc, [p.name]: parameters[p.name] || 0 }), {});
-        setParameters(newParameters);
-    }, [processes, parameters]);
+    const selectedTool = useMemo(() => tools.find(t => t.id === formData.toolId), [formData.toolId, tools]);
+    const processDef = useMemo(() => processes.find(p => p.name === formData.processName), [formData.processName, processes]);
+    const isTurningProcess = processDef?.group === 'Turning';
 
-    const updateParameter = (param: ProcessParameter, value: string) => {
-        const displayValue = parseFloat(value) || 0;
-        const metricValue = getMetricValue(displayValue, param.imperialUnit || param.unit);
-        setParameters(prev => ({ ...prev, [param.name]: metricValue }));
+    const handleProcessChange = (newProcessName: string) => {
+        // Keep tool and overrides, but reset process-specific params
+        const newParameters = {
+            cuttingSpeed: formData.parameters?.cuttingSpeed,
+            feedPerTooth: formData.parameters?.feedPerTooth,
+            feedPerRev: formData.parameters?.feedPerRev,
+        };
+        setFormData(prev => ({ ...prev, processName: newProcessName, parameters: newParameters }));
     };
 
     const handleToolSelect = (tool: Tool) => {
-        setToolId(tool.id);
+        const newParameters = { ...formData.parameters };
+        newParameters.cuttingSpeed = tool.cuttingSpeedVc || 0;
+        
+        // Populate the correct feed parameter based on process type
+        if (isTurningProcess) {
+             newParameters.feedPerRev = tool.feedPerTooth || 0; // Lathe tools use feedPerTooth field for feedPerRev
+        } else {
+            newParameters.feedPerTooth = tool.feedPerTooth || 0;
+        }
+
+        setFormData(prev => ({
+            ...prev,
+            toolId: tool.id,
+            toolName: tool.name,
+            parameters: newParameters,
+            estimatedToolLifeHours: undefined, // Reset op-specific life
+        }));
         setIsToolModalOpen(false);
+    };
+
+    const updateParameter = (paramName: string, value: string, metricUnit: string) => {
+        const displayValue = parseFloat(value) || 0;
+        const metricValue = getMetricValue(displayValue, metricUnit);
+        setFormData(prev => ({
+            ...prev,
+            parameters: { ...prev.parameters, [paramName]: metricValue }
+        }));
+    };
+    
+    const handleCalculateOpLife = async () => {
+        if (!selectedTool || !processDef) return;
+        setIsCalculatingLife(true);
+        const currentOperation: Operation = { ...formData, id: 'temp' } as Operation;
+        try {
+            const life = await calculateOperationToolLife(selectedTool, currentOperation, processDef);
+            if (life !== null) {
+                setFormData(prev => ({ ...prev, estimatedToolLifeHours: life }));
+            } else {
+                alert("Could not calculate tool life for this operation.");
+            }
+        } catch (error) {
+            console.error("Error during op tool life calc:", error);
+            alert("An error occurred while calculating tool life.");
+        } finally {
+            setIsCalculatingLife(false);
+        }
     };
 
     const handleSave = () => {
         const opId = operationToEdit?.id || uuid();
-        const selectedTool = tools.find(t => t.id === toolId);
         const opToSave: Operation = {
             id: opId,
-            processName,
-            parameters,
-            toolId,
+            processName: formData.processName || '',
+            parameters: formData.parameters || {},
+            toolId: formData.toolId,
             toolName: selectedTool?.name,
+            estimatedToolLifeHours: formData.estimatedToolLifeHours,
         };
         onSave(setup.id, opToSave);
     };
     
-    if (!isOpen || !machineForSetup) return null;
-
-    const processDef = processes.find(p => p.name === processName);
-    const processParams = (processDef?.parameters as ProcessParameter[]) || [];
-    const selectedTool = tools.find(t => t.id === toolId);
-
-    const operationData: Operation = useMemo(() => ({
-        id: operationToEdit?.id || '',
-        processName,
-        parameters,
-        toolId
-    }), [operationToEdit, processName, parameters, toolId]);
-
-    const calculatedRpm = useMemo(() => {
-        const vc = parameters.cuttingSpeed ?? selectedTool?.cuttingSpeedVc ?? 0;
-        const dia = selectedTool?.diameter ?? 0;
-        if (dia > 0 && vc > 0) return Math.round((vc * 1000) / (Math.PI * dia));
-        return 0;
-    }, [parameters, selectedTool]);
-
-    const calculatedFeedRate = useMemo(() => {
-        const fpt = parameters.feedPerTooth ?? selectedTool?.feedPerTooth ?? 0;
-        const teeth = selectedTool?.numberOfTeeth ?? 0;
-        if (calculatedRpm > 0 && fpt > 0 && teeth > 0) return Math.round(calculatedRpm * fpt * teeth);
-        return 0;
-    }, [calculatedRpm, parameters, selectedTool]);
-
-    const effectiveOpTimeMin = useMemo(() => {
-        if (!processDef) return 0;
+    // Memoized calculated values for display
+    const { effectiveOpTimeMin, opMachineCost, opToolCost, calculatedRpm, calculatedFeedRate } = useMemo(() => {
+        if (!processDef || !machineForSetup) return { effectiveOpTimeMin: 0, opMachineCost: 0, opToolCost: 0, calculatedRpm: 0, calculatedFeedRate: 0 };
+        
+        const operationData = { ...formData } as Operation;
         const rawTime = calculateOperationTime(operationData, processDef, selectedTool || null);
-        return rawTime / (setup.efficiency || 1);
-    }, [operationData, processDef, selectedTool, setup.efficiency]);
+        const effectiveOpTimeMin = rawTime / (setup.efficiency || 1);
+        const opMachineCost = (effectiveOpTimeMin / 60) * machineForSetup.hourlyRate;
+        
+        let opToolCost = 0;
+        if (selectedTool?.price && selectedTool.price > 0) {
+            const toolLifeHours = formData.estimatedToolLifeHours ?? selectedTool.estimatedLife;
+            if (toolLifeHours && toolLifeHours > 0) {
+                const toolCostPerMin = selectedTool.price / (toolLifeHours * 60);
+                opToolCost = toolCostPerMin * effectiveOpTimeMin;
+            }
+        }
+        
+        const vc = operationData.parameters?.cuttingSpeed ?? selectedTool?.cuttingSpeedVc ?? 0;
+        const dia = selectedTool?.diameter ?? 0;
+        const rpm = (dia > 0 && vc > 0) ? Math.round((vc * 1000) / (Math.PI * dia)) : 0;
+        
+        let feedRate = 0;
+        if (isTurningProcess) {
+            const f_rev = operationData.parameters?.feedPerRev ?? selectedTool?.feedPerTooth ?? 0;
+            if (rpm > 0 && f_rev > 0) feedRate = rpm * f_rev;
+        } else {
+            const fpt = operationData.parameters?.feedPerTooth ?? selectedTool?.feedPerTooth ?? 0;
+            const teeth = selectedTool?.numberOfTeeth ?? 0;
+            if (rpm > 0 && fpt > 0 && teeth > 0) feedRate = Math.round(rpm * fpt * teeth);
+        }
 
-    const opCost = useMemo(() => (effectiveOpTimeMin / 60) * machineForSetup.hourlyRate, [effectiveOpTimeMin, machineForSetup]);
-
+        return { effectiveOpTimeMin, opMachineCost, opToolCost, calculatedRpm: rpm, calculatedFeedRate: feedRate };
+    }, [formData, processDef, selectedTool, setup.efficiency, machineForSetup, isTurningProcess]);
+    
+    if (!isOpen || !machineForSetup) return null;
+    
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">
-            <ToolSelectionModal
-                isOpen={isToolModalOpen}
-                onClose={() => setIsToolModalOpen(false)}
-                onSelect={handleToolSelect}
-                tools={tools}
-                machineType={machineForSetup.machineType}
-            />
+            {isToolModalOpen && (
+                <ToolSelectionModal
+                    isOpen={isToolModalOpen}
+                    onClose={() => setIsToolModalOpen(false)}
+                    onSelect={handleToolSelect}
+                    tools={tools}
+                    machineType={machineForSetup.machineType}
+                />
+            )}
             <Card className="max-w-3xl w-full relative">
                 <button onClick={onClose} className="absolute top-4 right-4 text-text-muted hover:text-text-primary">
                     <CloseIcon />
                 </button>
                 <h2 className="text-2xl font-bold text-primary mb-6">{operationToEdit ? 'Edit Operation' : 'Add New Operation'}</h2>
                 
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-4">
-                    <Select label="Process" value={processName} onChange={e => handleProcessChange(e.target.value)}>
-                        {availableProcesses.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                    </Select>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-t border-border pt-4">
-                        {processParams.map(p => {
-                            const label = isMetric ? p.label : (p.imperialLabel || p.label);
-                            const unit = isMetric ? p.unit : (p.imperialUnit || p.unit);
-                            const displayValue = getDisplayValue(parameters[p.name] || 0, p.unit);
-                            return (
-                                <Input
-                                    key={p.name}
-                                    label={label}
-                                    type="number"
-                                    step="any"
-                                    value={displayValue}
-                                    onChange={e => updateParameter(p, e.target.value)}
-                                    unit={unit}
-                                />
-                            );
-                        })}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3 pt-3 border-t border-border/50">
-                        <DisplayField label="Tool" value={selectedTool?.name || 'N/A'} className="md:col-span-1" />
-                        <DisplayField label="Speed" value={calculatedRpm} unit="RPM" />
-                        <DisplayField label="Feed Rate" value={getDisplayValue(calculatedFeedRate, 'mm/min').toFixed(0)} unit={isMetric ? "mm/min" : "in/min"} />
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-4">
+                    {/* Section 1: Process and Tool Selection */}
+                    <div className="space-y-4">
+                        <Select label="1. Select Process" value={formData.processName || ''} onChange={e => handleProcessChange(e.target.value)}>
+                            {availableProcesses.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                        </Select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                            <DisplayField label="2. Select Tool" value={selectedTool?.name || 'N/A'} />
+                            <Button type="button" onClick={() => setIsToolModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white self-end h-10">
+                                {selectedTool ? 'Change Tool' : 'Select Tool'}
+                            </Button>
+                        </div>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-border/50 flex justify-between items-center">
-                        <div className="flex items-center space-x-6">
-                            <div className="text-center">
-                                <div className="text-sm text-text-secondary">Est. Time</div>
-                                <div className="text-lg font-bold text-blue-600">{effectiveOpTimeMin.toFixed(2)} min</div>
-                            </div>
-                            <div className="text-center">
-                                <div className="text-sm text-text-secondary">Est. Cost</div>
-                                <div className="text-lg font-bold text-green-600">{formatCurrency(opCost)}</div>
+                    {/* Section 2: Cutting Parameter Overrides */}
+                    <div className="border-t border-border pt-4">
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">3. Cutting Parameter Overrides</h3>
+                        <p className="text-sm text-text-muted mb-3">These values override the selected tool's defaults. The correct feed type is shown based on the process group.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                label={isMetric ? "Cutting Speed (Vc)" : "Surface Speed (SFM)"}
+                                type="number" step="any"
+                                value={getDisplayValue(formData.parameters?.cuttingSpeed || 0, 'm/min')}
+                                onChange={e => updateParameter('cuttingSpeed', e.target.value, 'm/min')}
+                                unit={isMetric ? "m/min" : "sfm"}
+                                placeholder={selectedTool?.cuttingSpeedVc?.toString() || "e.g., 120"}
+                            />
+                            {isTurningProcess ? (
+                                <Input
+                                    label="Feed per Revolution"
+                                    type="number" step="any"
+                                    value={getDisplayValue(formData.parameters?.feedPerRev || 0, 'mm')}
+                                    onChange={e => updateParameter('feedPerRev', e.target.value, 'mm')}
+                                    unit={isMetric ? "mm/rev" : "in/rev"}
+                                    placeholder={selectedTool?.feedPerTooth?.toString() || "e.g., 0.2"}
+                                />
+                            ) : (
+                                <Input
+                                    label="Feed per Tooth"
+                                    type="number" step="any"
+                                    value={getDisplayValue(formData.parameters?.feedPerTooth || 0, 'mm')}
+                                    onChange={e => updateParameter('feedPerTooth', e.target.value, 'mm')}
+                                    unit={isMetric ? "mm" : "in"}
+                                    placeholder={selectedTool?.feedPerTooth?.toString() || "e.g., 0.05"}
+                                />
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Section 3: Process Parameters */}
+                    {processDef && (processDef.parameters as ProcessParameter[]).length > 0 && (
+                        <div className="border-t border-border pt-4">
+                            <h3 className="text-lg font-semibold text-text-primary mb-2">4. Process Parameters</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {(processDef.parameters as ProcessParameter[]).map(p => {
+                                    const label = isMetric ? p.label : (p.imperialLabel || p.label);
+                                    const unit = isMetric ? p.unit : (p.imperialUnit || p.unit);
+                                    const displayValue = getDisplayValue(formData.parameters?.[p.name] || 0, p.unit);
+                                    return (
+                                        <Input key={p.name} label={label} type="number" step="any" value={displayValue} onChange={e => updateParameter(p.name, e.target.value, p.unit)} unit={unit} />
+                                    );
+                                })}
                             </div>
                         </div>
-                         <Button type="button" onClick={() => setIsToolModalOpen(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                            {selectedTool ? 'Change Tool' : 'Select Tool'}
-                        </Button>
+                    )}
+                    
+                    {/* Section 4: Tool Life */}
+                    <div className="border-t border-border pt-4">
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">5. Operation-Specific Tool Life</h3>
+                        <p className="text-sm text-text-muted mb-3">Calculate a more accurate tool life based on the specific cutting parameters for this operation.</p>
+                        <div className="grid grid-cols-2 gap-4 items-end">
+                            <DisplayField label="Op. Tool Life (AI)" value={formData.estimatedToolLifeHours !== undefined ? `${formData.estimatedToolLifeHours} hrs` : (selectedTool?.estimatedLife ? `${selectedTool.estimatedLife} hrs (default)` : 'N/A')} />
+                            <Button type="button" onClick={handleCalculateOpLife} disabled={isCalculatingLife || !selectedTool}>
+                                {isCalculatingLife ? 'Calculating...' : 'Calculate Life (AI)'}
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Section 5: Calculated Values */}
+                    <div className="border-t border-border pt-4 space-y-4">
+                        <h3 className="text-lg font-semibold text-text-primary">Calculated Values</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <DisplayField label="Calculated Speed" value={calculatedRpm} unit="RPM" />
+                            <DisplayField label="Calculated Feed Rate" value={getDisplayValue(calculatedFeedRate, 'mm/min').toFixed(0)} unit={isMetric ? "mm/min" : "in/min"} />
+                            <DisplayField label="Est. Time" value={`${effectiveOpTimeMin.toFixed(2)} min`} className="text-blue-600 font-bold" />
+                            <DisplayField label="Est. Machine Cost" value={formatCurrency(opMachineCost)} className="text-green-600 font-bold" />
+                        </div>
                     </div>
                 </div>
 

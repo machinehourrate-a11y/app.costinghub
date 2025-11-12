@@ -9,10 +9,9 @@ type MaterialSuggestion = Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_a
 interface MultiMaterialModalProps {
   onSave: (materials: MaterialSuggestion[]) => void;
   onClose: () => void;
-  currency: string;
 }
 
-export const MultiMaterialModal: React.FC<MultiMaterialModalProps> = ({ onSave, onClose, currency }) => {
+export const MultiMaterialModal: React.FC<MultiMaterialModalProps> = ({ onSave, onClose }) => {
   const [prompt, setPrompt] = useState('');
   const [suggestions, setSuggestions] = useState<MaterialSuggestion[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
@@ -26,7 +25,7 @@ export const MultiMaterialModal: React.FC<MultiMaterialModalProps> = ({ onSave, 
     setSuggestions([]);
     setSelectedIndices([]);
     try {
-      const result = await suggestMultipleMaterials(prompt, currency);
+      const result = await suggestMultipleMaterials(prompt);
       if (result) {
         setSuggestions(result);
         setSelectedIndices(result.map((_, index) => index)); // Select all by default
