@@ -74,7 +74,7 @@ const App: React.FC = () => {
       const results = [calcRes, matRes, machRes, toolRes, procRes, regionCostRes, regionCurrencyRes, plansRes, profileRes];
       for (const res of results) {
         if (res.error && res.error.code !== 'PGRST116') { // Ignore "The result contains 0 rows" error for single()
-          throw res.error;
+          throw new Error(res.error.message);
         }
       }
       
@@ -270,7 +270,7 @@ const App: React.FC = () => {
                 .single();
 
             if (updateError && updateError.code !== 'PGRST116') {
-                throw updateError;
+                throw new Error(updateError.message);
             }
             // Use the updated profile from the DB if it returns, otherwise merge the local updates
             profile = updatedProfile || { ...profile, ...updates };
@@ -283,20 +283,21 @@ const App: React.FC = () => {
       if (SUPER_ADMIN_EMAILS.includes(currentSession.user.email!)) {
           const { data, error } = await supabase.rpc('get_subscribers_list');
           if (error) {
-            throw error;
+            throw new Error(error.message);
           }
           setSubscribers(data as SubscriberInfo[]);
 
           const { data: feedbackData, error: feedbackError } = await supabase.from('feedback').select('*').order('created_at', { ascending: false });
           if (feedbackError) {
-            throw feedbackError;
+            throw new Error(feedbackError.message);
           }
           setFeedbacks(feedbackData || []);
       }
 
     } catch (e: any) {
         console.error("An error occurred during data fetch.", e);
-        setError(`There was an unexpected error. Finish what you were doing and then refresh the page to try again. Error: ${e.message}`);
+        const errorMessage = e?.message || String(e);
+        setError(`There was an unexpected error. Finish what you were doing and then refresh the page to try again. Error: ${errorMessage}`);
     }
   }, []);
 
@@ -424,14 +425,14 @@ const App: React.FC = () => {
           }
           return; 
       }
-      throw error; 
+      throw new Error(error.message); 
     } else if (data && data.length > 0) {
       setRegionCurrencyMap(prev => [...prev, data[0]]);
     } else {
       // This handles cases where insert succeeds but select returns null/empty (e.g., RLS)
       const { data: refreshedData, error: refreshError } = await supabase.from('region_currency_map').select('*').or(`user_id.eq.${user.id},user_id.is.null`);
       if (refreshError) {
-          throw refreshError;
+          throw new Error(refreshError.message);
       } else if (refreshedData) {
           setRegionCurrencyMap(refreshedData);
       }
@@ -477,7 +478,7 @@ const App: React.FC = () => {
     if (!user) throw new Error("User not found");
     const fullFeedback = { ...feedback, user_id: user.id, user_email: user.email };
     const { error } = await supabase.from('feedback').insert(fullFeedback as any);
-    if (error) throw error;
+    if (error) throw new Error(error.message);
   }, [user]);
 
   if (loading) return <LoadingSpinner />;
