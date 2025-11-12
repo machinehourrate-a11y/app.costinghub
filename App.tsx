@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
@@ -294,9 +295,16 @@ const App: React.FC = () => {
           setFeedbacks(feedbackData || []);
       }
 
-    } catch (e: any) {
+    } catch (e: unknown) {
         console.error("An error occurred during data fetch.", e);
-        const errorMessage = e?.message || String(e);
+        let errorMessage = "An unknown error occurred.";
+        if (e instanceof Error) {
+            errorMessage = e.message;
+        } else if (e && typeof e === 'object' && 'message' in e && typeof (e as any).message === 'string') {
+            errorMessage = (e as { message: string }).message;
+        } else if (typeof e === 'string') {
+            errorMessage = e;
+        }
         setError(`There was an unexpected error. Finish what you were doing and then refresh the page to try again. Error: ${errorMessage}`);
     }
   }, []);
@@ -419,20 +427,20 @@ const App: React.FC = () => {
       if (error.code === '23505') { 
           const { data: refreshedData, error: refreshError } = await supabase.from('region_currency_map').select('*').or(`user_id.eq.${user.id},user_id.is.null`);
           if (refreshError) {
-              throw new Error(`The region was just added, but we failed to refresh the list. Please refresh the page.`);
+              throw new Error(`The region was just added, but we failed to refresh the list. Please refresh the page. Error: ${refreshError.message || 'Unknown error'}`);
           } else if (refreshedData) {
               setRegionCurrencyMap(refreshedData);
           }
           return; 
       }
-      throw new Error(error.message); 
+      throw new Error(error.message || 'Failed to add region mapping.'); 
     } else if (data && data.length > 0) {
       setRegionCurrencyMap(prev => [...prev, data[0]]);
     } else {
       // This handles cases where insert succeeds but select returns null/empty (e.g., RLS)
       const { data: refreshedData, error: refreshError } = await supabase.from('region_currency_map').select('*').or(`user_id.eq.${user.id},user_id.is.null`);
       if (refreshError) {
-          throw new Error(refreshError.message);
+          throw new Error(refreshError.message || 'Failed to refresh region list after adding.');
       } else if (refreshedData) {
           setRegionCurrencyMap(refreshedData);
       }
@@ -475,10 +483,10 @@ const App: React.FC = () => {
   }, [handleUpdateUser, handleNavigation, plans, user]);
 
   const handleSubmitFeedback = useCallback(async (feedback: Omit<Feedback, 'id' | 'user_id' | 'user_email' | 'created_at'>) => {
-    if (!user) throw new Error("User not found");
+    if (!user) throw new Error("User not authenticated for submitting feedback.");
     const fullFeedback = { ...feedback, user_id: user.id, user_email: user.email };
     const { error } = await supabase.from('feedback').insert(fullFeedback as any);
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(error.message || 'Failed to submit feedback.');
   }, [user]);
 
   if (loading) return <LoadingSpinner />;
