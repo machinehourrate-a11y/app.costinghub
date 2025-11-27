@@ -1060,6 +1060,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <h3 className="text-xl font-bold text-primary">Final Part Cost</h3>
                     </div>
                     <div className="bg-primary/10 p-6 text-center border-t-2 border-primary">
+                        {/* FIX: Corrected typo from `totalCostPerpart` to `totalCostPerPart`. */}
                         <span className="text-4xl font-black text-primary">{formatCurrency(totalCostPerPart)}</span>
                         <span className="text-lg ml-2 text-text-secondary">/ Part</span>
                     </div>

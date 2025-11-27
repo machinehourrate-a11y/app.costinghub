@@ -3,7 +3,7 @@ import { Card } from './ui/Card';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { DisplayField } from './ui/DisplayField';
-import type { Tool, Operation } from '../types';
+import type { Tool, Operation, Process } from '../types';
 import { Button } from './ui/Button';
 
 interface FaceMillingOperationFormProps {
@@ -12,7 +12,9 @@ interface FaceMillingOperationFormProps {
     isToolModalOpen: boolean;
     setIsToolModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
     tools: Tool[];
-    isMetric: boolean; // Assuming this might be needed later for unit conversions
+    isMetric: boolean; 
+    process: Process;
+    onSetMaximizedImage: (url: string) => void;
 }
 
 interface FaceMillingOutputs {
@@ -38,12 +40,17 @@ const formatNumber = (value: number, digits: number = 2) => {
     return new Intl.NumberFormat('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
 };
 
+
 export const FaceMillingOperationForm: React.FC<FaceMillingOperationFormProps> = ({
-    formData, setFormData, setIsToolModalOpen, tools
+    formData, setFormData, setIsToolModalOpen, tools = [], process, onSetMaximizedImage
 }) => {
     const faceMills = useMemo(() => tools.filter(t => t.toolType === 'Face Mill'), [tools]);
-    const selectedTool = useMemo(() => tools.find(t => t.id === formData.toolId), [formData.toolId, tools]);
 
+    const selectedTool = useMemo(() => {
+        if (!formData.toolId) return null;
+        return tools.find(t => t.id === formData.toolId);
+    }, [formData.toolId, tools]);
+    
     const [outputs, setOutputs] = useState<FaceMillingOutputs | null>(null);
 
     // Default parameters if they don't exist
@@ -154,45 +161,62 @@ export const FaceMillingOperationForm: React.FC<FaceMillingOperationFormProps> =
             </div>
 
             {/* Outputs Column */}
-            <div>
-                 <h3 className="text-lg font-semibold text-text-primary mb-4">Results</h3>
-                 {outputs && selectedTool ? (
-                    <div className="space-y-6">
-                        <div className="p-4 bg-green-600/10 border border-green-600/30 rounded-lg text-center">
-                            <div className="text-lg font-semibold text-green-300">Total Cutting Time</div>
-                            <div className="text-4xl font-bold text-green-400">{formatNumber(outputs.cuttingTime)} min</div>
+            <div className="space-y-6">
+                {process.imageUrl && (
+                    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">Process Illustration</h3>
+                        <div className="aspect-video bg-white rounded-lg border border-border flex items-center justify-center overflow-hidden">
+                            <button 
+                                type="button" 
+                                onClick={() => onSetMaximizedImage(process.imageUrl!)} 
+                                className="w-full h-full focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
+                                title="Click to enlarge image"
+                            >
+                                <img src={process.imageUrl} alt={process.name} className="h-full w-full object-contain p-2"/>
+                            </button>
                         </div>
-                        
-                        <div className="grid grid-cols-1 gap-4">
-                                <DisplayField label="Material Removal Rate (MRR)" value={formatNumber(outputs.mrr, 0)} unit="mm³/min" />
-                        </div>
-
-                        <div className="border-t border-border pt-4">
-                            <h3 className="font-semibold text-text-secondary mb-2">Tool Life</h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                <DisplayField label="Estimated Tool Life" value={`${formatNumber(outputs.toolLifeHours)} hr`} />
-                                <DisplayField label="Parts per Tool" value={formatNumber(outputs.partsPerTool, 0)} unit="parts" />
-                            </div>
-                        </div>
-
-                        <div className="border-t border-border pt-4">
-                            <h3 className="font-semibold text-text-secondary mb-2">Intermediate Calculations</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                                <DisplayField label="Spindle Speed" value={formatNumber(outputs.spindleSpeed, 0)} unit="RPM" />
-                                <DisplayField label="Feed Rate" value={formatNumber(outputs.feedRate, 0)} unit="mm/min" />
-                                <DisplayField label="Feed per Rev" value={formatNumber(outputs.feedPerRevolution, 3)} unit="mm/rev" />
-                                <DisplayField label="Width Passes" value={formatNumber(outputs.widthPassCount, 0)} />
-                                <DisplayField label="Depth Passes" value={formatNumber(outputs.depthPassCount, 0)} />
-                                <DisplayField label="Total Passes" value={formatNumber(outputs.totalLinearPasses, 0)} />
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="text-center text-text-muted p-8 bg-background/50 rounded-lg">
-                        <p>Enter valid inputs and select a tool to see results.</p>
-                        {faceMills.length === 0 && <p className="mt-2 text-yellow-500">No "Face Mill" tools found in your library. Please add one to use this feature.</p>}
                     </div>
                 )}
+                <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                    <h3 className="text-lg font-semibold text-text-primary mb-4">Results</h3>
+                    {outputs && selectedTool ? (
+                        <div className="space-y-6">
+                            <div className="p-4 bg-green-600/10 border border-green-600/30 rounded-lg text-center">
+                                <div className="text-lg font-semibold text-green-300">Total Cutting Time</div>
+                                <div className="text-4xl font-bold text-green-400">{formatNumber(outputs.cuttingTime)} min</div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 gap-4">
+                                    <DisplayField label="Material Removal Rate (MRR)" value={formatNumber(outputs.mrr, 0)} unit="mm³/min" />
+                            </div>
+
+                            <div className="border-t border-border pt-4">
+                                <h3 className="font-semibold text-text-secondary mb-2">Tool Life</h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                    <DisplayField label="Estimated Tool Life" value={`${formatNumber(outputs.toolLifeHours)} hr`} />
+                                    <DisplayField label="Parts per Tool" value={formatNumber(outputs.partsPerTool, 0)} unit="parts" />
+                                </div>
+                            </div>
+
+                            <div className="border-t border-border pt-4">
+                                <h3 className="font-semibold text-text-secondary mb-2">Intermediate Calculations</h3>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                                    <DisplayField label="Spindle Speed" value={formatNumber(outputs.spindleSpeed, 0)} unit="RPM" />
+                                    <DisplayField label="Feed Rate" value={formatNumber(outputs.feedRate, 0)} unit="mm/min" />
+                                    <DisplayField label="Feed per Rev" value={formatNumber(outputs.feedPerRevolution, 3)} unit="mm/rev" />
+                                    <DisplayField label="Width Passes" value={formatNumber(outputs.widthPassCount, 0)} />
+                                    <DisplayField label="Depth Passes" value={formatNumber(outputs.depthPassCount, 0)} />
+                                    <DisplayField label="Total Passes" value={formatNumber(outputs.totalLinearPasses, 0)} />
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="text-center text-text-muted p-8">
+                            <p>Enter valid inputs and select a tool to see results.</p>
+                            {faceMills.length === 0 && <p className="mt-2 text-yellow-500">No "Face Mill" tools found in your library. Please add one to use this feature.</p>}
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

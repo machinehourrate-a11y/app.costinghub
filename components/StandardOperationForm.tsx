@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -19,11 +20,12 @@ interface StandardOperationFormProps {
     getDisplayValue: (val: number, unit: string) => number;
     getMetricValue: (val: number, unit: string) => number;
     formatCurrency: (val: number) => string;
+    onSetMaximizedImage: (url: string) => void;
 }
 
 export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
     formData, setFormData, process, setup, machine, tools, onToolClick,
-    isMetric, getDisplayValue, getMetricValue, formatCurrency
+    isMetric, getDisplayValue, getMetricValue, formatCurrency, onSetMaximizedImage
 }) => {
     const [isCalculatingLife, setIsCalculatingLife] = useState(false);
     
@@ -189,6 +191,22 @@ export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
 
             {/* RIGHT COLUMN: TOOL & RESULTS */}
             <div className="space-y-6">
+                {/* Process Illustration */}
+                {process.imageUrl && (
+                    <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
+                        <h3 className="text-lg font-semibold text-text-primary mb-2">Process Illustration</h3>
+                        <div className="aspect-video bg-white rounded-lg border border-border flex items-center justify-center overflow-hidden">
+                            <button 
+                                type="button" 
+                                onClick={() => onSetMaximizedImage(process.imageUrl!)} 
+                                className="w-full h-full focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
+                                title="Click to enlarge image"
+                            >
+                                <img src={process.imageUrl} alt={process.name} className="h-full w-full object-contain p-2"/>
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {/* Tool Selection Card */}
                 <div className="bg-surface border border-border rounded-xl p-5 shadow-sm">
                      <div className="flex justify-between items-start mb-4">
