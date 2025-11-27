@@ -96,7 +96,7 @@ export interface Database {
           machineType: string
           name: string
           powerKw: number
-          user_id: string
+          user_id: string | null
           xAxis: number
           yAxis: number
           zAxis: number
@@ -111,7 +111,7 @@ export interface Database {
           machineType: string
           name: string
           powerKw: number
-          user_id: string
+          user_id: string | null
           xAxis: number
           yAxis: number
           zAxis: number
@@ -126,7 +126,7 @@ export interface Database {
           machineType?: string
           name?: string
           powerKw?: number
-          user_id?: string
+          user_id?: string | null
           xAxis?: number
           yAxis?: number
           zAxis?: number
@@ -149,7 +149,7 @@ export interface Database {
           name: string
           properties: Json
           "subCategory": string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           category: string
@@ -158,7 +158,7 @@ export interface Database {
           name: string
           properties: Json
           "subCategory"?: string | null
-          user_id: string
+          user_id: string | null
         }
         Update: {
           category?: string
@@ -167,7 +167,7 @@ export interface Database {
           name?: string
           properties?: Json
           "subCategory"?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -189,7 +189,7 @@ export interface Database {
           name: string
           parameters: Json
           formula: string | null
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           compatibleMachineTypes: string[]
@@ -200,7 +200,7 @@ export interface Database {
           name: string
           parameters: Json
           formula?: string | null
-          user_id: string
+          user_id: string | null
         }
         Update: {
           compatibleMachineTypes?: string[]
@@ -211,7 +211,7 @@ export interface Database {
           name?: string
           parameters?: Json
           formula?: string | null
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -448,7 +448,7 @@ export interface Database {
           numberOfTeeth: number | null
           speedRpm: number | null
           toolType: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           arborOrInsert: string
@@ -469,7 +469,7 @@ export interface Database {
           numberOfTeeth?: number | null
           speedRpm?: number | null
           toolType: string
-          user_id: string
+          user_id: string | null
         }
         Update: {
           arborOrInsert?: string
@@ -490,7 +490,7 @@ export interface Database {
           numberOfTeeth?: number | null
           speedRpm?: number | null
           toolType?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {

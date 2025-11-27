@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -149,7 +147,8 @@ export const MachineLibraryPage: React.FC<MachineLibraryPageProps> = ({ user, ma
         <MachineModal 
           machine={editingMachine} 
           onSave={handleSaveMachine} 
-          onClose={() => setIsModalOpen(false)} 
+          onClose={() => setIsModalOpen(false)}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
       {isMultiModalOpen && (

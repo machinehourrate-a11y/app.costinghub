@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import type { Session } from '@supabase/supabase-js';
+// FIX: The `Session` type is not exported in older versions of `@supabase/supabase-js`.
+// It will be inferred as `any` to resolve the compilation error.
+// import type { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 
 import { AuthPage } from './pages/AuthPage';
@@ -31,7 +33,8 @@ import { calculateMachiningCosts } from './services/calculationService';
 const uuid = () => crypto.randomUUID();
 
 const App: React.FC = () => {
-  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  // FIX: Using `any` as `Session` type is not available in the version of the library implied by the errors.
+  const [session, setSession] = useState<any | null | undefined>(undefined);
   const [user, setUser] = useState<User | null>(null);
   const [calculations, setCalculations] = useState<Calculation[]>([]);
   const [materials, setMaterials] = useState<MaterialMasterItem[]>([]);
@@ -59,7 +62,8 @@ const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  const fetchData = useCallback(async (currentSession: Session) => {
+  // FIX: Using `any` as `Session` type is not available in the version of the library implied by the errors.
+  const fetchData = useCallback(async (currentSession: any) => {
     if (!currentSession.user) return;
 
     try {
@@ -67,9 +71,10 @@ const App: React.FC = () => {
 
       const [calcRes, matRes, machRes, toolRes, allProcRes, regionCostRes, regionCurrencyRes, plansRes, profileRes] = await Promise.all([
         supabase.from('calculations').select('*').eq('user_id', currentSession.user.id),
-        supabase.from('materials').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
-        supabase.from('machines').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
-        supabase.from('tools').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
+        supabase.from('materials').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('machines').select('*').eq('user_id', currentSession.user.id),
+        supabase.from('tools').select('*').eq('user_id', currentSession.user.id),
+        // Fetch global processes AND this user's custom processes in one query
         supabase.from('processes').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
         supabase.from('region_costs').select('*').eq('user_id', currentSession.user.id),
         supabase.from('region_currency_map').select('*').or(`user_id.eq.${currentSession.user.id},user_id.is.null`),
@@ -91,44 +96,6 @@ const App: React.FC = () => {
       let finalRegionCurrencyMap = regionCurrencyRes.data || [];
       let allRegionCosts = regionCostRes.data || [];
       let allProcesses = (allProcRes.data as Process[]) || [];
-      
-      // --- MIGRATION/CLEANUP: Remove user-specific copies of default items ---
-      const cleanupPromises = [];
-      const userId = currentSession.user.id;
-
-      const userDefaultMaterials = finalMaterials.filter(m => m.user_id === userId && DEFAULT_MATERIAL_NAMES.has(m.name));
-      if (userDefaultMaterials.length > 0) {
-          const idsToDelete = userDefaultMaterials.map(m => m.id);
-          cleanupPromises.push(supabase.from('materials').delete().in('id', idsToDelete));
-          finalMaterials = finalMaterials.filter(m => !idsToDelete.includes(m.id));
-      }
-
-      const userDefaultMachines = finalMachines.filter(m => m.user_id === userId && DEFAULT_MACHINE_NAMES.has(m.name));
-      if (userDefaultMachines.length > 0) {
-          const idsToDelete = userDefaultMachines.map(m => m.id);
-          cleanupPromises.push(supabase.from('machines').delete().in('id', idsToDelete));
-          finalMachines = finalMachines.filter(m => !idsToDelete.includes(m.id));
-      }
-
-      const userDefaultTools = finalTools.filter(t => t.user_id === userId && DEFAULT_TOOL_NAMES.has(t.name));
-      if (userDefaultTools.length > 0) {
-          const idsToDelete = userDefaultTools.map(t => t.id);
-          cleanupPromises.push(supabase.from('tools').delete().in('id', idsToDelete));
-          finalTools = finalTools.filter(t => !idsToDelete.includes(t.id));
-      }
-      
-      const userDefaultProcesses = allProcesses.filter(p => p.user_id === userId && DEFAULT_PROCESS_NAMES.has(p.name));
-      if (userDefaultProcesses.length > 0) {
-          const idsToDelete = userDefaultProcesses.map(p => p.id);
-          cleanupPromises.push(supabase.from('processes').delete().in('id', idsToDelete));
-          allProcesses = allProcesses.filter(p => !idsToDelete.includes(p.id));
-      }
-
-      if (cleanupPromises.length > 0) {
-          await Promise.all(cleanupPromises);
-          console.log("Cleaned up user-specific default items.");
-      }
-      // --- END MIGRATION ---
 
       const seedingOperations: PromiseLike<any>[] = [];
 
@@ -154,8 +121,46 @@ const App: React.FC = () => {
             .then(res => {
                 if (res.error) console.error("Failed to seed showcase calculations:", res.error.message);
                 else if (res.data) finalCalculations = [...finalCalculations, ...res.data];
-            }, err => console.warn("Seeding calculations ignored due to error", err))
+            })
+            .catch(err => console.warn("Seeding calculations ignored due to error", err))
         );
+      }
+      
+      // --- Seed User-Specific Libraries ---
+      if (finalMaterials.length === 0) {
+          const materialsToSeed = INITIAL_MATERIALS_MASTER.map(m => ({ ...m, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('materials').insert(materialsToSeed as any).select()
+              .then(res => {
+                  if (res.error) console.error("Failed to seed materials:", res.error.message);
+                  else if (res.data) finalMaterials = [...finalMaterials, ...res.data];
+              })
+              .catch(err => console.warn("Seeding materials ignored due to error", err))
+          );
+      }
+
+      if (finalMachines.length === 0) {
+          const machinesToSeed = DEFAULT_MACHINES_MASTER.map(m => ({ ...m, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('machines').insert(machinesToSeed as any).select()
+              .then(res => {
+                  if (res.error) console.error("Failed to seed machines:", res.error.message);
+                  else if (res.data) finalMachines = [...finalMachines, ...res.data];
+              })
+              .catch(err => console.warn("Seeding machines ignored due to error", err))
+          );
+      }
+
+      if (finalTools.length === 0) {
+          const toolsToSeed = DEFAULT_TOOLS_MASTER.map(t => ({ ...t, id: uuid(), user_id: currentSession.user.id }));
+          seedingOperations.push(
+              supabase.from('tools').insert(toolsToSeed as any).select()
+              .then(res => {
+                  if (res.error) console.error("Failed to seed tools:", res.error.message);
+                  else if (res.data) finalTools = [...finalTools, ...res.data];
+              })
+              .catch(err => console.warn("Seeding tools ignored due to error", err))
+          );
       }
 
       // --- Seed Region Currency Maps ---
@@ -184,36 +189,35 @@ const App: React.FC = () => {
                     if (res.error) {
                         console.debug("Region seeding info:", res.error.message);
                     }
-                }, err => console.warn("Seeding regions ignored due to error", err))
+                })
+                .catch(err => console.warn("Seeding regions ignored due to error", err))
           );
       }
 
-      // --- Seed Global Libraries (if they don't exist in the database) ---
-      // This will run on first superadmin login to populate the database with defaults for everyone.
+      // --- Seed Global Processes (if they don't exist in the database) ---
+      // Seeding global data is a superadmin responsibility. This will run on first superadmin login.
       if (isCurrentUserSuperAdmin) {
-        const seedGlobalLibrary = async (
-            table: 'materials' | 'machines' | 'tools' | 'processes', 
-            existingItems: any[], 
-            defaultItems: any[], 
-            setter: React.Dispatch<React.SetStateAction<any[]>>
-        ) => {
-            const existingGlobalNames = new Set(existingItems.filter(p => p.user_id === null).map(p => p.name));
-            const missingGlobalItems = defaultItems.filter(p => !existingGlobalNames.has(p.name));
-            if (missingGlobalItems.length > 0) {
-                const itemsToSeed = missingGlobalItems.map(p => ({ ...p, id: uuid(), user_id: null }));
-                seedingOperations.push(
-                    supabase.from(table).insert(itemsToSeed as any).select().then(res => {
-                        if (res.error) console.error(`Failed to seed global ${table}:`, res.error.message);
-                        else if (res.data) setter(prev => [...prev, ...res.data]);
-                    }, err => console.warn(`Seeding global ${table} failed:`, err))
-                );
-            }
-        };
+        const existingGlobalProcessNames = new Set(allProcesses.filter(p => p.user_id === null).map(p => p.name));
+        const missingGlobalProcesses = DEFAULT_PROCESSES.filter(p => !existingGlobalProcessNames.has(p.name));
 
-        await seedGlobalLibrary('materials', finalMaterials, INITIAL_MATERIALS_MASTER, setMaterials);
-        await seedGlobalLibrary('machines', finalMachines, DEFAULT_MACHINES_MASTER, setMachines);
-        await seedGlobalLibrary('tools', finalTools, DEFAULT_TOOLS_MASTER, setTools);
-        await seedGlobalLibrary('processes', allProcesses, DEFAULT_PROCESSES, setProcesses);
+        if (missingGlobalProcesses.length > 0) {
+            const processesToSeed = missingGlobalProcesses.map(p => ({
+                ...p,
+                id: uuid(),
+                user_id: null, // Mark as global
+            }));
+            seedingOperations.push(
+                supabase.from('processes').insert(processesToSeed as any).select()
+                .then(res => {
+                    if (res.error) {
+                        console.error("Failed to seed global processes:", res.error.message);
+                    } else if (res.data) {
+                        allProcesses = [...allProcesses, ...res.data];
+                    }
+                })
+                .catch(err => console.warn("Seeding global processes failed:", err))
+            );
+        }
       }
 
 
@@ -238,6 +242,7 @@ const App: React.FC = () => {
       // --- Backfill Logic ---
       const backfillUsdPricingOps: Promise<void>[] = [];
       const now = new Date().toISOString();
+      const userId = currentSession.user.id;
       
       const createBackfillPromise = (items: any[], type: 'material' | 'machine' | 'tool', nameSet: Set<string>, priceSelector: (item: any) => number | null | undefined): PromiseLike<void> | null => {
           const defaultItems = items.filter(item => nameSet.has(item.name));
@@ -378,6 +383,7 @@ const App: React.FC = () => {
         isInRecoveryFlow.current = true;
     }
 
+    // FIX: Correctly destructure the subscription from the `data` object returned by `onAuthStateChange`.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (_event === 'PASSWORD_RECOVERY') {
           isInRecoveryFlow.current = true;
@@ -408,13 +414,13 @@ const App: React.FC = () => {
       setLoading(false);
     });
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-        if (!session && !window.location.hash.includes('type=recovery')) {
-            setLoading(false);
-        }
-    });
+    // FIX: `getSession` is an async method in v2, but the errors suggest an older API. `session()` is the synchronous equivalent in v1.
+    const session = supabase.auth.session();
+    if (!session && !window.location.hash.includes('type=recovery')) {
+        setLoading(false);
+    }
 
-    return () => subscription.unsubscribe();
+    return () => subscription?.unsubscribe();
   }, [fetchData]);
 
   const handleNavigation = useCallback((view: View) => {
@@ -471,14 +477,42 @@ const App: React.FC = () => {
   const crudHandler = useCallback(async (table: 'materials' | 'machines' | 'processes' | 'tools' | 'subscription_plans' | 'region_costs', action: 'add' | 'update' | 'delete' | 'add_multiple' | 'delete_multiple', payload: any, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
     if (!user) return;
     let result;
+    
+    // Check if this is a Super Admin updating a Standard Process
+    const shouldSyncGlobal = table === 'processes' && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()) && DEFAULT_PROCESS_NAMES.has(payload.name);
 
     if (action === 'add') {
       const fullPayload = { ...payload, id: uuid(), user_id: user.id };
       result = await supabase.from(table).insert(fullPayload as any).select();
       if (!result.error && result.data) stateSetter(prev => [...prev, result.data[0]]);
+      
+      if (shouldSyncGlobal && !result.error) {
+          // Also create a global record
+          const globalPayload = { ...payload, id: uuid(), user_id: null };
+          await supabase.from(table).insert(globalPayload as any);
+      }
+
     } else if (action === 'update') {
       result = await supabase.from(table).update(payload).eq('id', payload.id).select();
       if (!result.error && result.data) stateSetter(prev => prev.map(item => item.id === payload.id ? result.data[0] : item));
+      
+      if (shouldSyncGlobal && !result.error) {
+          // Find existing global record by name and update it, or create if missing
+          const { data: existingGlobal } = await supabase.from(table).select('id').eq('name', payload.name).is('user_id', null).single();
+          
+          // Prepare update payload (exclude IDs and user-specific fields)
+          const updateData = { ...payload };
+          delete updateData.id;
+          delete updateData.user_id;
+          delete updateData.created_at;
+
+          if (existingGlobal) {
+              await supabase.from(table).update(updateData).eq('id', existingGlobal.id);
+          } else {
+              await supabase.from(table).insert({ ...updateData, id: uuid(), user_id: null });
+          }
+      }
+
     } else if (action === 'delete') {
       result = await supabase.from(table).delete().eq('id', payload);
       if (!result.error) stateSetter(prev => prev.filter(item => item.id !== payload));

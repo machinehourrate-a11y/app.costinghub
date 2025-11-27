@@ -208,6 +208,7 @@ export const MaterialsPage: React.FC<MaterialsPageProps> = ({ materials, user, o
                     onSave={handleSaveMaterial}
                     onClose={() => setIsModalOpen(false)}
                     allProperties={allProperties}
+                    isSuperAdmin={isSuperAdmin}
                 />
             )}
             {isMultiModalOpen && (

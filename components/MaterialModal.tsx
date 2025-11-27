@@ -5,12 +5,14 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { suggestMaterial } from '../services/geminiService';
+import { DEFAULT_MATERIAL_NAMES } from '../constants';
 
 interface MaterialModalProps {
   material: MaterialMasterItem | null;
   onSave: (material: MaterialMasterItem) => void;
   onClose: () => void;
   allProperties: string[];
+  isSuperAdmin: boolean;
 }
 
 const BLANK_MATERIAL: Omit<MaterialMasterItem, 'id'> = {
@@ -37,7 +39,7 @@ const PropertyInput: React.FC<{
     />
 );
 
-export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, onClose, allProperties }) => {
+export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, onClose, allProperties, isSuperAdmin }) => {
   const [formData, setFormData] = useState<Omit<MaterialMasterItem, 'id'>>(() => material || BLANK_MATERIAL);
   const [newPropName, setNewPropName] = useState('');
   const [newPropValue, setNewPropValue] = useState('');
@@ -45,6 +47,8 @@ export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, 
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
+
+  const isDefault = useMemo(() => material ? DEFAULT_MATERIAL_NAMES.has(material.name) : false, [material]);
 
   useEffect(() => {
     setFormData(material || BLANK_MATERIAL);
@@ -154,7 +158,15 @@ export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, 
         <form onSubmit={handleSubmit}>
           <div className="max-h-[60vh] overflow-y-auto pr-4 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Material Name" name="name" value={formData.name} onChange={handleInputChange} required />
+                <Input 
+                  label="Material Name" 
+                  name="name" 
+                  value={formData.name} 
+                  onChange={handleInputChange} 
+                  required 
+                  disabled={isSuperAdmin && isDefault}
+                  title={isSuperAdmin && isDefault ? "The name of a default material cannot be changed to maintain data integrity." : ""}
+                />
                 <Select label="Category" name="category" value={formData.category} onChange={handleInputChange}>
                     {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </Select>

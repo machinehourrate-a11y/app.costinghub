@@ -121,12 +121,38 @@ export const ADDITIONAL_AXIS_OPTIONS = ['None', '4th', '5th', 'Y-Axis'];
 
 export const DEFAULT_PROCESSES: Process[] = [
     // --- MILLING ---
-    { id: 'proc_cncmill_001', name: 'Face Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], imageUrl: 'https://i.ibb.co/3zd5NnN/face-milling.png', parameters: [
-        { name: 'faceLength', label: 'Face Length (Lp)', unit: 'mm' },
-        { name: 'faceWidth', label: 'Face Width (W)', unit: 'mm' },
-        { name: 'depthOfCut', label: 'Depth of Cut (ap)', unit: 'mm' },
-        { name: 'radialEngagement', label: 'Radial Engagement (ae)', unit: 'mm' },
-    ], formula: '(Math.ceil(faceWidth / ((radialEngagement || toolDiameter * 0.75) || 1)) * (faceLength + toolDiameter)) / feedRate' },
+     { id: 'proc_cncmill_001', name: 'Face Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], imageUrl: 'https://i.ibb.co/L5B703Q/face-milling.png',
+        parameters: [
+            { name: 'machiningLength', label: 'Machining Length (L)', unit: 'mm' },
+            { name: 'machiningWidth', label: 'Machining Width (W)', unit: 'mm' },
+            { name: 'totalDepth', label: 'Total Depth (TD)', unit: 'mm' },
+            { name: 'depthPerPass', label: 'Depth of Cut per Pass (ap)', unit: 'mm' },
+            { name: 'stepover', label: 'Stepover', unit: 'fraction' },
+        ],
+        formula: `(function() {
+            if (!toolDiameter || toolDiameter <= 0 || !cuttingSpeedVc || cuttingSpeedVc <= 0 || !feedPerTooth || feedPerTooth <= 0 || !numberOfTeeth || numberOfTeeth <= 0 || totalDepth <= 0 || depthPerPass <= 0 || machiningLength <= 0 || machiningWidth <= 0 || stepover <= 0) {
+                return 0;
+            }
+
+            const spindleSpeed = (1000 * cuttingSpeedVc) / (Math.PI * toolDiameter);
+            const feedPerRevolution = numberOfTeeth * feedPerTooth;
+            const feedRate = spindleSpeed * feedPerRevolution;
+
+            if (feedRate <= 0) {
+                return 0;
+            }
+
+            const depthPassCount = Math.ceil(totalDepth / depthPerPass);
+            const stepoverWidth = stepover * toolDiameter;
+            const widthPassCount = machiningWidth <= toolDiameter ? 1 : Math.ceil((machiningWidth - toolDiameter) / stepoverWidth) + 1;
+            
+            const totalLinearPasses = depthPassCount * widthPassCount;
+            const timePerPass = machiningLength / feedRate;
+            const cuttingTime = totalLinearPasses * timePerPass;
+
+            return cuttingTime;
+        })()`
+    },
     { id: 'proc_cncmill_002', name: 'Peripheral Milling', group: 'Milling', compatibleMachineTypes: ['CNC Mill'], imageUrl: 'https://i.ibb.co/C1dC2F9/peripheral-milling.png', parameters: [
         { name: 'edgeLength', label: 'Edge Length', unit: 'mm' },
         { name: 'totalDepth', label: 'Total Depth (t)', unit: 'mm' },
@@ -368,25 +394,25 @@ export const ARBOR_OR_INSERT_OPTIONS: Tool['arborOrInsert'][] = ['Shank', 'Arbor
 
 export const DEFAULT_TOOLS_MASTER: Tool[] = [
     // Milling
-    { id: 'tool_001', name: 'Sandvik CoroMill Plura 10mm End Mill', brand: 'Sandvik', model: '2P342-1000-PA', toolType: 'End Mill', material: 'Carbide', diameter: 10, cornerRadius: 0.5, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 150, feedPerTooth: 0.06, compatibleMachineTypes: ['CNC Mill'], price: 95, estimatedLife: 50 },
-    { id: 'tool_007', name: 'Seco 6mm Ball Nose End Mill', brand: 'Seco Tools', model: 'Jabro-Solid2 JS554', toolType: 'End Mill', material: 'Carbide', diameter: 6, cornerRadius: 3, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 180, feedPerTooth: 0.04, compatibleMachineTypes: ['CNC Mill'], price: 110, estimatedLife: 40 },
-    { id: 'tool_004', name: 'Iscar HELIQUMILL 50mm Face Mill', brand: 'Iscar', model: 'HM90 F90A D50-5-22', toolType: 'Face Mill', material: 'Carbide', diameter: 50, cornerRadius: null, numberOfTeeth: 5, arborOrInsert: 'Arbor', cuttingSpeedVc: 200, feedPerTooth: 0.12, compatibleMachineTypes: ['CNC Mill'], price: 280, estimatedLife: 100 },
+    { id: 'tool_001', name: 'Sandvik CoroMill Plura 10mm End Mill', brand: 'Sandvik', model: '2P342-1000-PA', toolType: 'End Mill', material: 'Carbide', diameter: 10, cornerRadius: 0.5, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 150, feedPerTooth: 0.06, compatibleMachineTypes: ['CNC Mill'], price: 95, estimatedLife: 50, speedRpm: null, feedRate: null },
+    { id: 'tool_007', name: 'Seco 6mm Ball Nose End Mill', brand: 'Seco Tools', model: 'Jabro-Solid2 JS554', toolType: 'End Mill', material: 'Carbide', diameter: 6, cornerRadius: 3, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 180, feedPerTooth: 0.04, compatibleMachineTypes: ['CNC Mill'], price: 110, estimatedLife: 40, speedRpm: null, feedRate: null },
+    { id: 'tool_004', name: 'Iscar HELIQUMILL 50mm Face Mill', brand: 'Iscar', model: 'HM90 F90A D50-5-22', toolType: 'Face Mill', material: 'Carbide', diameter: 50, cornerRadius: null, numberOfTeeth: 5, arborOrInsert: 'Arbor', cuttingSpeedVc: 200, feedPerTooth: 0.12, compatibleMachineTypes: ['CNC Mill'], price: 280, estimatedLife: 100, speedRpm: null, feedRate: null },
     
     // Hole Making
-    { id: 'tool_002', name: 'Dormer A002 5mm HSS Drill', brand: 'Dormer', model: 'A0025.0', toolType: 'Drill', material: 'HSS', diameter: 5, cornerRadius: null, numberOfTeeth: 2, arborOrInsert: 'Shank', cuttingSpeedVc: 40, feedPerTooth: 0.1, compatibleMachineTypes: ['CNC Mill', 'CNC Lathe'], price: 15, estimatedLife: 200 },
-    { id: 'tool_005', name: 'Guhring 10mm Carbide Drill', brand: 'Guhring', model: 'RT 100 U', toolType: 'Drill', material: 'Carbide', diameter: 10, cornerRadius: null, numberOfTeeth: 2, arborOrInsert: 'Shank', cuttingSpeedVc: 100, feedPerTooth: 0.15, compatibleMachineTypes: ['CNC Mill', 'CNC Lathe'], price: 75, estimatedLife: 300 },
-    { id: 'tool_006', name: 'Emuge M10x1.5 Tap', brand: 'Emuge', model: 'Rekord B-VA', toolType: 'Tap', material: 'HSS', diameter: 10, cornerRadius: null, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 15, feedPerTooth: null, compatibleMachineTypes: ['CNC Mill'], price: 60, estimatedLife: 500 },
+    { id: 'tool_002', name: 'Dormer A002 5mm HSS Drill', brand: 'Dormer', model: 'A0025.0', toolType: 'Drill', material: 'HSS', diameter: 5, cornerRadius: null, numberOfTeeth: 2, arborOrInsert: 'Shank', cuttingSpeedVc: 40, feedPerTooth: 0.1, compatibleMachineTypes: ['CNC Mill', 'CNC Lathe'], price: 15, estimatedLife: 200, speedRpm: null, feedRate: null },
+    { id: 'tool_005', name: 'Guhring 10mm Carbide Drill', brand: 'Guhring', model: 'RT 100 U', toolType: 'Drill', material: 'Carbide', diameter: 10, cornerRadius: null, numberOfTeeth: 2, arborOrInsert: 'Shank', cuttingSpeedVc: 100, feedPerTooth: 0.15, compatibleMachineTypes: ['CNC Mill', 'CNC Lathe'], price: 75, estimatedLife: 300, speedRpm: null, feedRate: null },
+    { id: 'tool_006', name: 'Emuge M10x1.5 Tap', brand: 'Emuge', model: 'Rekord B-VA', toolType: 'Tap', material: 'HSS', diameter: 10, cornerRadius: null, numberOfTeeth: 4, arborOrInsert: 'Shank', cuttingSpeedVc: 15, feedPerTooth: null, compatibleMachineTypes: ['CNC Mill'], price: 60, estimatedLife: 500, speedRpm: null, feedRate: null },
 
     // Turning
-    { id: 'tool_003', name: 'Kennametal CNMG 12.7mm Insert', brand: 'Kennametal', model: 'CNMG120408', toolType: 'Lathe Insert', material: 'Carbide', diameter: 12.7, cornerRadius: 0.8, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 220, feedPerTooth: 0.25, compatibleMachineTypes: ['CNC Lathe'], price: 25, estimatedLife: 10 },
-    { id: 'tool_008', name: 'Walter WNMG 12.7mm Insert', brand: 'Walter', model: 'WNMG080408-FP5', toolType: 'Lathe Insert', material: 'Carbide', diameter: 12.7, cornerRadius: 0.8, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 280, feedPerTooth: 0.3, compatibleMachineTypes: ['CNC Lathe'], price: 30, estimatedLife: 15 },
-    { id: 'tool_009', name: 'Sandvik 3mm Grooving Insert', brand: 'Sandvik', model: 'CoroCut 2 N123G2', toolType: 'Grooving Tool', material: 'Carbide', diameter: 3, cornerRadius: 0.2, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 150, feedPerTooth: 0.1, compatibleMachineTypes: ['CNC Lathe'], price: 45, estimatedLife: 20 },
+    { id: 'tool_003', name: 'Kennametal CNMG 12.7mm Insert', brand: 'Kennametal', model: 'CNMG120408', toolType: 'Lathe Insert', material: 'Carbide', diameter: 12.7, cornerRadius: 0.8, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 220, feedPerTooth: 0.25, compatibleMachineTypes: ['CNC Lathe'], price: 25, estimatedLife: 10, speedRpm: null, feedRate: null },
+    { id: 'tool_008', name: 'Walter WNMG 12.7mm Insert', brand: 'Walter', model: 'WNMG080408-FP5', toolType: 'Lathe Insert', material: 'Carbide', diameter: 12.7, cornerRadius: 0.8, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 280, feedPerTooth: 0.3, compatibleMachineTypes: ['CNC Lathe'], price: 30, estimatedLife: 15, speedRpm: null, feedRate: null },
+    { id: 'tool_009', name: 'Sandvik 3mm Grooving Insert', brand: 'Sandvik', model: 'CoroCut 2 N123G2', toolType: 'Grooving Tool', material: 'Carbide', diameter: 3, cornerRadius: 0.2, numberOfTeeth: 1, arborOrInsert: 'Insert', cuttingSpeedVc: 150, feedPerTooth: 0.1, compatibleMachineTypes: ['CNC Lathe'], price: 45, estimatedLife: 20, speedRpm: null, feedRate: null },
 
     // Grinding
-    { id: 'tool_010', name: 'Norton 200mm Grinding Wheel', brand: 'Norton', model: '32A46-H8VBE', toolType: 'Grinding Wheel', material: 'CBN', diameter: 200, cornerRadius: null, numberOfTeeth: null, arborOrInsert: 'Arbor', cuttingSpeedVc: 3000, feedPerTooth: null, compatibleMachineTypes: ['Grinder'], price: 150, estimatedLife: 200 },
+    { id: 'tool_010', name: 'Norton 200mm Grinding Wheel', brand: 'Norton', model: '32A46-H8VBE', toolType: 'Grinding Wheel', material: 'CBN', diameter: 200, cornerRadius: null, numberOfTeeth: null, arborOrInsert: 'Arbor', cuttingSpeedVc: 3000, feedPerTooth: null, compatibleMachineTypes: ['Grinder'], price: 150, estimatedLife: 200, speedRpm: null, feedRate: null },
     
     // Sawing
-    { id: 'tool_011', name: 'Amada SGLB 10 TPI Bandsaw Blade', brand: 'Amada', model: 'SGLB', toolType: 'Band Saw Blade', material: 'HSS', diameter: 27, cornerRadius: null, numberOfTeeth: 10, arborOrInsert: 'Shank', cuttingSpeedVc: 60, feedPerTooth: 0.05, compatibleMachineTypes: ['Saw'], price: 120, estimatedLife: 80 },
+    { id: 'tool_011', name: 'Amada SGLB 10 TPI Bandsaw Blade', brand: 'Amada', model: 'SGLB', toolType: 'Band Saw Blade', material: 'HSS', diameter: 27, cornerRadius: null, numberOfTeeth: 10, arborOrInsert: 'Shank', cuttingSpeedVc: 60, feedPerTooth: 0.05, compatibleMachineTypes: ['Saw'], price: 120, estimatedLife: 80, speedRpm: null, feedRate: null },
 ] as any;
 export const DEFAULT_TOOL_NAMES = new Set(DEFAULT_TOOLS_MASTER.map(t => t.name));
 
@@ -405,6 +431,9 @@ export const BILLET_SHAPES = [
 
 export const DEFAULT_REGION_CURRENCY_MAP: RegionCurrencyMap[] = [
     { id: 'rcm_default', region: 'Default', currency: 'USD' },
+    { id: 'rcm_us', region: 'United States', currency: 'USD' },
+    { id: 'rcm_in', region: 'India', currency: 'INR' },
+    { id: 'rcm_de', region: 'Germany', currency: 'EUR' },
 ] as any;
 
 export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
@@ -451,7 +480,7 @@ export const DEFAULT_SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
     }
 ] as any;
 
-export const SUPER_ADMIN_EMAILS = ['admin@costinghub.com', 'gokulprasadrs20@gmail.com', 'designersworldcbe@gmail.com'];
+export const SUPER_ADMIN_EMAILS = ['designersworldcbe@gmail.com', 'admin@costinghub.com', 'machinehourrate@gmail.com', 'gokulprasadrs20@gmail.com'];
 
 
 // --- START OF NEW SHOWCASE TEMPLATES ---
@@ -469,7 +498,7 @@ const CNC_MILL_SHOWCASE: Calculation = {
     setups: [{
       id: 'setup_mill_1', name: 'Milling Operations', machineId: 'mach_001', timePerSetupMin: 45, toolChangeTimeSec: 10, efficiency: 0.95,
       operations: [
-        { id: 'op_m1', processName: 'Face Milling', toolId: 'tool_004', parameters: { faceLength: 120, faceWidth: 80, depthOfCut: 1, radialEngagement: 40 } },
+        { id: 'op_m1', processName: 'Peripheral Milling', toolId: 'tool_001', parameters: { edgeLength: 120, totalDepth: 10, depthPerPass: 5 } },
         { id: 'op_m2', processName: 'Pocketing (MRR)', toolId: 'tool_001', parameters: { pocketLength: 50, pocketWidth: 30, pocketDepth: 15, radialEngagement: 5, axialEngagement: 10 } },
         { id: 'op_m3', processName: 'Drilling (on Mill)', toolId: 'tool_005', parameters: { holeDepth: 20, allowance: 2, numberOfHoles: 4 } },
       ]
@@ -730,6 +759,14 @@ export const ALL_CURRENCIES = [...new Set(COUNTRY_CURRENCY_MAPPING.map(c => c.cu
 export const CURRENCIES = Object.keys(CURRENCY_CONVERSION_RATES_TO_USD);
 
 export const CHANGELOG_DATA: ChangelogEntry[] = [
+    {
+        version: "1.2.3",
+        date: "2025-11-18",
+        title: "UI Enhancements & Layout Updates",
+        changes: [
+            { type: "improvement", description: "Updated the User Feedback page to a balanced, two-column layout for improved readability on larger screens." },
+        ]
+    },
     {
         version: "1.2.2",
         date: "2025-11-11",

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -45,7 +43,7 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
   
-  const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email), [user.email]);
+  const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()), [user.email]);
   
   const currency = 'USD'; // Default currency for library pages
   const currencySymbol = currencySymbols[currency] || '$';
@@ -117,7 +115,6 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
         if (column === 'estimatedLife') { delete newFilters.minEstimatedLife; delete newFilters.maxEstimatedLife; }
         setFilters(newFilters);
         setActivePopover(null);
-        setCurrentPage(1);
     }
 
   // Pagination logic
@@ -164,6 +161,7 @@ export const ToolLibraryPage: React.FC<ToolLibraryPageProps> = ({ user, tools, o
           onSave={handleSaveTool} 
           onClose={() => setIsModalOpen(false)} 
           currency={currency}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
       {isMultiModalOpen && (

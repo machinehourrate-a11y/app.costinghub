@@ -89,15 +89,49 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
     const analytics = useMemo(() => {
         const totalUsers = subscribers.length;
         const totalCalculations = subscribers.reduce((acc, user) => acc + (user.calculation_count || 0), 0);
+        
         const planDistribution = subscribers.reduce((acc, user) => {
             const plan = user.plan_name || 'Free';
             acc[plan] = (acc[plan] || 0) + 1;
             return acc;
         }, {} as Record<string, number>);
-        return { totalUsers, totalCalculations, planDistribution };
-    }, [subscribers]);
 
-    const doughnutData = useMemo(() => ({
+        const userStatus = { active: 0, expired: 0, inactive: 0 };
+        subscribers.forEach(user => {
+            if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+                userStatus.active++;
+                return;
+            }
+            if (user.subscription_status !== 'active') {
+                userStatus.inactive++;
+                return;
+            }
+            let dateString = user.subscription_expires_on;
+            if (!dateString) {
+                const userPlan = plans.find(p => p.name === user.plan_name);
+                if (userPlan?.name === 'Free') {
+                    const created = new Date(user.subscribed_on);
+                    created.setFullYear(created.getFullYear() + 1);
+                    dateString = created.toISOString();
+                }
+            }
+
+            if (!dateString) {
+                userStatus.active++;
+                return;
+            }
+
+            if (new Date(dateString) < new Date()) {
+                userStatus.expired++;
+            } else {
+                userStatus.active++;
+            }
+        });
+
+        return { totalUsers, totalCalculations, planDistribution, userStatus };
+    }, [subscribers, plans]);
+
+    const planDoughnutData = useMemo(() => ({
         labels: Object.keys(analytics.planDistribution),
         datasets: [{
             data: Object.values(analytics.planDistribution),
@@ -111,6 +145,20 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
             borderWidth: 1,
         }],
     }), [analytics.planDistribution]);
+    
+    const statusDoughnutData = useMemo(() => ({
+        labels: ['Active', 'Expired', 'Inactive'],
+        datasets: [{
+            data: [analytics.userStatus.active, analytics.userStatus.expired, analytics.userStatus.inactive],
+            backgroundColor: [
+                'rgba(16, 185, 129, 0.7)',  // Green
+                'rgba(239, 68, 68, 0.7)',   // Red
+                'rgba(107, 114, 128, 0.7)', // Gray
+            ],
+            borderColor: ['#10B981', '#EF4444', '#6B7280'],
+            borderWidth: 1,
+        }],
+    }), [analytics.userStatus]);
     
     const chartOptions = useMemo(() => {
       const textColor = theme === 'light' ? '#6B7280' : '#A0A0A0';
@@ -128,26 +176,22 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
     }, [theme]);
 
     const renderExpiryDate = (user: SubscriberInfo) => {
-        // Super admins do not have an expiry date.
         if (SUPER_ADMIN_EMAILS.includes(user.email)) {
             return <span className="text-text-muted">Not Applicable</span>;
         }
 
         let dateString = user.subscription_expires_on;
         
-        // If date is missing, calculate a fallback for display purposes
         if (!dateString) {
             const userPlan = plans.find(p => p.name === user.plan_name);
             let expires: Date | null = null;
 
             if (userPlan) {
                 if (userPlan.name === 'Free' || userPlan.period === '') {
-                    // For Free plans, expiry is 1 year from signup
                     const creationDate = new Date(user.subscribed_on);
                     creationDate.setFullYear(creationDate.getFullYear() + 1);
                     expires = creationDate;
                 } else if (userPlan.period === 'mo') {
-                    // This is a display fallback, the real date will be set on next login
                     const oneMonthFromNow = new Date();
                     oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
                     expires = oneMonthFromNow;
@@ -185,22 +229,30 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
   return (
     <div className="w-full mx-auto space-y-8 animate-fade-in">
         {/* Analytics Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="flex flex-col justify-center text-center">
                 <h3 className="text-lg font-semibold text-primary mb-2">Total Users</h3>
                 <p className="text-5xl font-bold">{analytics.totalUsers}</p>
             </Card>
-            <Card className="lg:col-span-2">
+             <Card className="flex flex-col justify-center text-center">
+                <h3 className="text-lg font-semibold text-primary mb-2">Total Calculations Created</h3>
+                <p className="text-5xl font-bold">{analytics.totalCalculations}</p>
+            </Card>
+            <Card>
                 <h3 className="text-lg font-semibold text-primary mb-4">Plan Distribution</h3>
                 <div className="h-40">
                     {analytics.totalUsers > 0 ? (
-                        <Doughnut data={doughnutData} options={chartOptions} />
+                        <Doughnut data={planDoughnutData} options={chartOptions} />
                     ) : <p className="text-center text-text-muted">No user data available.</p>}
                 </div>
             </Card>
-            <Card className="flex flex-col justify-center text-center lg:col-span-3">
-                <h3 className="text-lg font-semibold text-primary mb-2">Total Calculations Created</h3>
-                <p className="text-5xl font-bold">{analytics.totalCalculations}</p>
+             <Card>
+                <h3 className="text-lg font-semibold text-primary mb-4">User Status</h3>
+                <div className="h-40">
+                    {analytics.totalUsers > 0 ? (
+                        <Doughnut data={statusDoughnutData} options={chartOptions} />
+                    ) : <p className="text-center text-text-muted">No user data available.</p>}
+                </div>
             </Card>
         </div>
         

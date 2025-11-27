@@ -45,7 +45,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ successMessage, setSuccessMe
     setLoading(true);
 
     if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({
+      // FIX: `signInWithPassword` is from Supabase v2. The errors suggest an older API version, so we use `signIn`.
+      const { error } = await supabase.auth.signIn({
         email,
         password,
       });
@@ -58,13 +59,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ successMessage, setSuccessMe
         setLoading(false);
         return;
       }
+      // FIX: The `signUp` method signature in older versions takes two arguments.
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            name: name.trim(),
-          },
+      }, {
+        data: {
+          name: name.trim(),
         },
       });
       if (error) {
@@ -83,7 +84,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ successMessage, setSuccessMe
     }
     clearMessages();
     setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    // FIX: `resetPasswordForEmail` is on the `api` object in older versions of the SDK.
+    const { error } = await supabase.auth.api.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
     });
     setLoading(false);

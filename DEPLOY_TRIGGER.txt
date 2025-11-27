@@ -1,4 +1,0 @@
-Deployment Trigger: V2 Initial Release - Force Deploy
-Timestamp: November 13, 2025
-Status: Production-ready
-This file triggers a new deployment on Netlify.

@@ -1,5 +1,3 @@
-
-
 import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool, MarkupCosts, RegionCost, MaterialProperty } from '../types';
 import { CURRENCY_CONVERSION_RATES_TO_USD } from '../constants';
 
@@ -140,6 +138,11 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
   const cuttingSpeed = operation.parameters.cuttingSpeed ?? tool?.cuttingSpeedVc ?? 0;
   const toolDiameter = tool?.diameter ?? 0;
   
+  // Also get raw tool properties for complex formulas
+  const cuttingSpeedVc = tool?.cuttingSpeedVc ?? 0;
+  const feedPerTooth_raw = tool?.feedPerTooth ?? 0;
+  const numberOfTeeth_raw = tool?.numberOfTeeth ?? 0;
+  
   // 3. Differentiate between process groups for accurate speed/feed calculations
   if (process.group === 'Turning') {
     // --- TURNING LOGIC ---
@@ -206,6 +209,19 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
   executionParams.spindleSpeed = spindleSpeed;
   executionParams.feedRate = feedRate || 1; // Fallback to 1 to avoid division by zero
   executionParams.toolDiameter = toolDiameter;
+  // Pass raw tool data for complex formulas
+  executionParams.cuttingSpeedVc = cuttingSpeedVc;
+  executionParams.feedPerTooth = feedPerTooth_raw; 
+  executionParams.numberOfTeeth = numberOfTeeth_raw;
+
+  // Ensure all defined parameters for the process are present in the execution context
+  if (Array.isArray(process.parameters)) {
+      (process.parameters as any[]).forEach(p => {
+          if (p.name && executionParams[p.name] === undefined) {
+              executionParams[p.name] = 0;
+          }
+      });
+  }
 
   const allParamNames = Object.keys(executionParams);
   const paramValues = allParamNames.map(name => executionParams[name]);

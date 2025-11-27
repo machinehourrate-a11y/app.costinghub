@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Tool } from '../types';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
-import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS } from '../constants';
+import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, DEFAULT_TOOL_NAMES } from '../constants';
 import { suggestTool, calculateToolLife } from '../services/geminiService';
 
 interface ToolModalProps {
@@ -12,6 +12,7 @@ interface ToolModalProps {
   onSave: (tool: Tool) => void;
   onClose: () => void;
   currency: string;
+  isSuperAdmin: boolean;
 }
 
 const BLANK_TOOL: Omit<Tool, 'id' | 'created_at' | 'user_id' | 'price'> = {
@@ -32,12 +33,14 @@ const BLANK_TOOL: Omit<Tool, 'id' | 'created_at' | 'user_id' | 'price'> = {
   estimatedLife: null,
 };
 
-export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, currency }) => {
+export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, currency, isSuperAdmin }) => {
   const [formData, setFormData] = useState<Omit<Tool, 'id' | 'created_at' | 'user_id' | 'price'>>(() => tool ? { ...tool } : BLANK_TOOL);
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
   const [isCalculatingLife, setIsCalculatingLife] = useState(false);
+
+  const isDefault = useMemo(() => tool ? DEFAULT_TOOL_NAMES.has(tool.name) : false, [tool]);
 
   useEffect(() => {
     setFormData(tool ? { ...tool } : BLANK_TOOL);
@@ -46,8 +49,13 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
   // Auto-calculation and auto-naming effect
   useEffect(() => {
     const { brand, model, diameter, toolType, material, cuttingSpeedVc, feedPerTooth, numberOfTeeth } = formData;
+    
+    // Do not auto-generate name if it's a default item being edited by an admin
+    if (!(isSuperAdmin && isDefault)) {
+      const newName = `${brand} ${model} ${diameter || ''}mm ${toolType}`.trim().replace(/\s+/g, ' ');
+       setFormData(prev => ({...prev, name: newName}));
+    }
 
-    const newName = `${brand} ${model} ${diameter || ''}mm ${toolType}`.trim().replace(/\s+/g, ' ');
     let newRpm: number | null = null;
     let newFeedRate: number | null = null;
     
@@ -61,12 +69,11 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
     
     setFormData(prev => ({
         ...prev,
-        name: newName,
         speedRpm: newRpm,
         feedRate: newFeedRate
     }));
 
-  }, [formData.brand, formData.model, formData.diameter, formData.toolType, formData.material, formData.cuttingSpeedVc, formData.feedPerTooth, formData.numberOfTeeth]);
+  }, [formData.brand, formData.model, formData.diameter, formData.toolType, formData.material, formData.cuttingSpeedVc, formData.feedPerTooth, formData.numberOfTeeth, isSuperAdmin, isDefault]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -113,9 +120,7 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
 
   const handleCalculateLife = async () => {
     setIsCalculatingLife(true);
-    // FIX: The `calculateToolLife` function expects a `price` property, which is missing from `formData`.
-    // We construct a temporary object that includes the price to satisfy the type signature.
-    const life = await calculateToolLife({ ...formData, price: tool?.price ?? null });
+    const life = await calculateToolLife(formData);
     if (life !== null) {
       setFormData(prev => ({ ...prev, estimatedLife: life }));
     } else {
@@ -168,8 +173,22 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
             
             <h3 className="text-lg font-semibold text-primary border-t border-border pt-4">Tool Definition</h3>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input label="Brand" name="brand" value={formData.brand} onChange={handleInputChange} />
-                <Input label="Model" name="model" value={formData.model} onChange={handleInputChange} />
+                <Input 
+                  label="Brand" 
+                  name="brand" 
+                  value={formData.brand} 
+                  onChange={handleInputChange} 
+                  disabled={isSuperAdmin && isDefault}
+                  title={isSuperAdmin && isDefault ? "Brand/Model cannot be changed for default items to maintain data integrity." : ""}
+                />
+                <Input 
+                  label="Model" 
+                  name="model" 
+                  value={formData.model} 
+                  onChange={handleInputChange} 
+                  disabled={isSuperAdmin && isDefault}
+                  title={isSuperAdmin && isDefault ? "Brand/Model cannot be changed for default items to maintain data integrity." : ""}
+                />
             </div>
             <Input label="Tool Name (Auto-generated)" name="name" value={formData.name} onChange={() => {}} disabled />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

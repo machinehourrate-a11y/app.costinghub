@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Machine } from '../types';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
-import { MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
+import { MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS, DEFAULT_MACHINE_NAMES } from '../constants';
 import { suggestMachine } from '../services/geminiService';
 
 interface MachineModalProps {
   machine: Machine | null;
   onSave: (machine: Machine) => void;
   onClose: () => void;
+  isSuperAdmin: boolean;
 }
 
 const BLANK_MACHINE: Omit<Machine, 'id' | 'created_at' | 'user_id' | 'hourlyRate'> = {
@@ -25,22 +26,27 @@ const BLANK_MACHINE: Omit<Machine, 'id' | 'created_at' | 'user_id' | 'hourlyRate
   additionalAxis: 'None',
 };
 
-export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onClose }) => {
+export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onClose, isSuperAdmin }) => {
   const [formData, setFormData] = useState<Omit<Machine, 'id' | 'created_at' | 'user_id' | 'hourlyRate'>>(() => machine ? { ...machine } : BLANK_MACHINE);
   const [suggestionPrompt, setSuggestionPrompt] = useState('');
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestionError, setSuggestionError] = useState('');
+
+  const isDefault = useMemo(() => machine ? DEFAULT_MACHINE_NAMES.has(machine.name) : false, [machine]);
 
   useEffect(() => {
     setFormData(machine ? { ...machine } : BLANK_MACHINE);
   }, [machine]);
 
   useEffect(() => {
+    // Do not auto-generate name if it's a default item being edited by an admin
+    if (isSuperAdmin && isDefault) return;
+
     const newName = `${formData.brand} ${formData.model}`.trim();
     if (newName) {
         setFormData(prev => ({...prev, name: newName}));
     }
-  }, [formData.brand, formData.model]);
+  }, [formData.brand, formData.model, isSuperAdmin, isDefault]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -108,8 +114,24 @@ export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onC
         
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[60vh] overflow-y-auto pr-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Brand" name="brand" value={formData.brand} onChange={handleInputChange} required />
-              <Input label="Model" name="model" value={formData.model} onChange={handleInputChange} required />
+              <Input 
+                label="Brand" 
+                name="brand" 
+                value={formData.brand} 
+                onChange={handleInputChange} 
+                required 
+                disabled={isSuperAdmin && isDefault}
+                title={isSuperAdmin && isDefault ? "Brand/Model cannot be changed for default items to maintain data integrity." : ""}
+              />
+              <Input 
+                label="Model" 
+                name="model" 
+                value={formData.model} 
+                onChange={handleInputChange} 
+                required 
+                disabled={isSuperAdmin && isDefault}
+                title={isSuperAdmin && isDefault ? "Brand/Model cannot be changed for default items to maintain data integrity." : ""}
+              />
             </div>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Machine Name (Auto-generated)" name="name" value={formData.name} onChange={() => {}} disabled />

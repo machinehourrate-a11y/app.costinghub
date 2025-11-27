@@ -31,7 +31,6 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
-  // FIX: Converted user email to lowercase for case-insensitive super admin check.
   const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()), [user.email]);
 
   // Memoized filtering logic

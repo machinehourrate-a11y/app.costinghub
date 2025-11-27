@@ -54,7 +54,7 @@ export const FeedbackListPage: React.FC<FeedbackListPageProps> = ({ feedbacks })
 
     return (
         <div className="w-full mx-auto flex flex-col lg:flex-row gap-8 animate-fade-in">
-            <div className="lg:w-2/3">
+            <div className="lg:w-1/2">
                 <Card>
                     <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
                         <h2 className="text-2xl font-bold text-primary">User Feedback & Requests</h2>
@@ -105,7 +105,7 @@ export const FeedbackListPage: React.FC<FeedbackListPageProps> = ({ feedbacks })
                     </div>
                 </Card>
             </div>
-            <div className="lg:w-1/3">
+            <div className="lg:w-1/2">
                 <Card className="sticky top-24">
                      {selectedFeedback ? (
                         <div className="animate-fade-in">

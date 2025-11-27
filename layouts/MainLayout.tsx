@@ -46,7 +46,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ user, currentView, onNav
     // Special title for editing a calculation
     const isEditing = currentView === 'calculator' && editingCalculation; 
     const pageTitle = isEditing ? 'Edit Calculation' : title;
-    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
+    const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -90,7 +90,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ user, currentView, onNav
                                 {isSuperAdmin && (
                                     <>
                                         <button onClick={() => { onNavigate('superadmin'); setIsDropdownOpen(false); }} className="w-full text-left block px-4 py-2 text-sm text-text-primary hover:bg-background/60">
-                                            Super Admin
+                                            Subscription Plans
                                         </button>
                                         <button onClick={() => { onNavigate('subscribersList'); setIsDropdownOpen(false); }} className="w-full text-left block px-4 py-2 text-sm text-text-primary hover:bg-background/60">
                                             Subscribers List

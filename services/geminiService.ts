@@ -2,8 +2,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool, Operation } from '../types';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
 
-// FIX: Per coding guidelines, the API key must be sourced from `process.env.API_KEY`.
-// This also resolves the TypeScript error "Property 'env' does not exist on type 'ImportMeta'".
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 /**
@@ -291,7 +289,7 @@ const toolLifeResponseSchema = {
     required: ["estimatedLife"]
 };
 
-export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at'>): Promise<number | null> => {
+export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at' | 'price'>): Promise<number | null> => {
     const prompt = `
         Given the following tool parameters:
         - Tool Type: ${tool.toolType}
