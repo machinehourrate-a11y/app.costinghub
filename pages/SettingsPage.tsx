@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import type { SettingsPageProps, User } from '../types';
 import { Card } from '../components/ui/Card';
@@ -35,6 +33,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
     const [formData, setFormData] = useState<User>(user);
     const [saved, setSaved] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
+    const [isRemovingLogo, setIsRemovingLogo] = useState(false);
     const [uploadError, setUploadError] = useState('');
 
     useEffect(() => {
@@ -83,6 +82,33 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
         setIsUploading(false);
     };
 
+    const handleRemoveLogo = async () => {
+        if (!formData.company_logo_url || !user) return;
+
+        setIsRemovingLogo(true);
+        setUploadError('');
+
+        try {
+            // Extract file path from the full URL
+            // e.g., https://.../public/company_logos/user-id/filename.png?t=...
+            const urlParts = formData.company_logo_url.split('/company_logos/');
+            if (urlParts.length > 1) {
+                const filePath = urlParts[1].split('?')[0]; // Get path and remove query params
+                const { error } = await supabase.storage.from('company_logos').remove([filePath]);
+                if (error) throw error;
+            }
+            
+            // Clear the URL from the profile regardless of storage deletion success
+            setFormData(prev => ({ ...prev, company_logo_url: null }));
+
+        } catch (error: any) {
+            console.error("Failed to remove logo:", error);
+            setUploadError(`Failed to remove logo: ${error.message}`);
+        } finally {
+            setIsRemovingLogo(false);
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onUpdateUser(formData);
@@ -129,10 +155,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                                     )}
                                 </div>
-                                <label htmlFor="logo-upload" className={`cursor-pointer bg-surface py-2 px-3 border border-border rounded-md shadow-sm text-sm font-medium text-text-primary hover:bg-background ${isUploading ? 'opacity-50' : ''}`}>
-                                    <span>{isUploading ? 'Uploading...' : 'Upload Logo'}</span>
-                                    <input id="logo-upload" name="logo-upload" type="file" className="sr-only" onChange={handleLogoUpload} accept="image/png, image/jpeg, image/svg+xml" disabled={isUploading}/>
-                                </label>
+                                <div className="flex items-center space-x-2">
+                                    <label htmlFor="logo-upload" className={`cursor-pointer bg-surface py-2 px-3 border border-border rounded-md shadow-sm text-sm font-medium text-text-primary hover:bg-background ${isUploading ? 'opacity-50' : ''}`}>
+                                        <span>{isUploading ? 'Uploading...' : (formData.company_logo_url ? 'Change Logo' : 'Upload Logo')}</span>
+                                        <input id="logo-upload" name="logo-upload" type="file" className="sr-only" onChange={handleLogoUpload} accept="image/png, image/jpeg, image/svg+xml" disabled={isUploading}/>
+                                    </label>
+                                    {formData.company_logo_url && (
+                                        <Button variant="secondary" type="button" onClick={handleRemoveLogo} disabled={isRemovingLogo} className="text-red-600 border-red-300 hover:bg-red-50 hover:border-red-400">
+                                            {isRemovingLogo ? 'Removing...' : 'Remove'}
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
                             {uploadError && <p className="text-red-500 text-sm mt-2">{uploadError}</p>}
                         </div>

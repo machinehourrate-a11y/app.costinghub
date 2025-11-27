@@ -1,5 +1,3 @@
-
-
 import React from 'react';
 import type { ResultsPageProps } from '../types';
 import { Card } from '../components/ui/Card';
@@ -10,8 +8,16 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
 
   if (!calculation || !calculation.results) {
     return (
-       <div className="min-h-screen bg-background flex flex-col p-4 sm:p-6 lg:p-8 animate-fade-in items-center justify-center text-center">
-         <Card>
+       <div className="w-full max-w-4xl mx-auto animate-fade-in">
+         <div className="mb-6">
+            <Button variant="secondary" onClick={onBack}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Calculations
+            </Button>
+         </div>
+         <Card className="text-center">
            <h1 className="text-2xl font-bold text-primary mb-4">No Results Available</h1>
            <p className="text-text-secondary mb-6">
             {
@@ -20,7 +26,6 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
                 : "This is a draft calculation and does not have any results yet. Please edit the calculation and finalize it to see the results."
             }
            </p>
-           <Button onClick={onBack}>Back to Calculations</Button>
          </Card>
       </div>
     );
@@ -30,6 +35,14 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
 
   return (
     <div className="w-full max-w-6xl mx-auto animate-fade-in">
+        <div className="mb-6">
+            <Button variant="secondary" onClick={onBack}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to Calculations
+            </Button>
+        </div>
         <div className="mb-4 bg-surface shadow rounded-lg p-4 flex justify-between items-center border border-border">
              <div>
                 <h1 className="text-3xl font-bold text-primary">Results for {calculation.inputs.partName}</h1>
