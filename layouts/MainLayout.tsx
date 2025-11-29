@@ -39,6 +39,7 @@ const viewTitles: { [key in View]: string } = {
 
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ user, currentView, onNavigate, children, editingCalculation, onLogout, theme, setTheme }) => {
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const title = viewTitles[currentView] || 'Calculations';
@@ -63,7 +64,15 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ user, currentView, onNav
 
   return (
     <div className="min-h-screen flex bg-background">
-      {currentView !== 'landing' && <Sidebar user={user} currentView={currentView} onNavigate={onNavigate} />}
+      {currentView !== 'landing' && (
+        <Sidebar 
+            user={user} 
+            currentView={currentView} 
+            onNavigate={onNavigate}
+            isCollapsed={isSidebarCollapsed}
+            setIsCollapsed={setIsSidebarCollapsed}
+        />
+      )}
       <div className="flex-1 flex flex-col">
         <header className="bg-surface shadow-sm p-4 border-b border-border">
           <div className="w-full mx-auto flex justify-between items-center">

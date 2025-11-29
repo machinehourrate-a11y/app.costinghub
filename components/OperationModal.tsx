@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { CloseIcon } from './ui/CloseIcon';
-import type { Operation, Process, Tool, Machine, Setup } from '../types';
+import type { Operation, Process, Tool, Machine, Setup, View } from '../types';
 import { ToolSelectionModal } from './ToolSelectionModal';
 import { StandardOperationForm } from './StandardOperationForm';
 import { FaceMillingOperationForm } from './FaceMillingOperationForm';
@@ -23,11 +23,12 @@ interface OperationModalProps {
     getDisplayValue: (metricValue: number, metricUnit: string) => number;
     getMetricValue: (displayValue: number, imperialUnit: string) => number;
     formatCurrency: (value: number) => string;
+    onNavigate: (view: View) => void;
 }
 
 export const OperationModal: React.FC<OperationModalProps> = ({
     isOpen, onClose, onSave, setup, operationToEdit,
-    processes, tools, machines, isMetric, getDisplayValue, getMetricValue, formatCurrency
+    processes, tools, machines, isMetric, getDisplayValue, getMetricValue, formatCurrency, onNavigate
 }) => {
     // State
     const [formData, setFormData] = useState<Partial<Operation>>({});
@@ -155,13 +156,14 @@ export const OperationModal: React.FC<OperationModalProps> = ({
                 </div>
             )}
             <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">
-                 {isToolModalOpen && (
+                {isToolModalOpen && (
                     <ToolSelectionModal
                         isOpen={isToolModalOpen}
                         onClose={() => setIsToolModalOpen(false)}
                         onSelect={handleToolSelect}
                         tools={tools}
                         machineType={machineForSetup.machineType}
+                        onNavigate={onNavigate}
                     />
                 )}
                 

@@ -6,6 +6,8 @@ interface SidebarProps {
   currentView: View;
   onNavigate: (view: View) => void;
   user: User;
+  isCollapsed: boolean;
+  setIsCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
 const NavItem: React.FC<{
@@ -14,18 +16,21 @@ const NavItem: React.FC<{
   currentView: View;
   onNavigate: (view: View) => void;
   icon: React.ReactElement;
-}> = ({ label, view, currentView, onNavigate, icon }) => {
+  isCollapsed: boolean;
+}> = ({ label, view, currentView, onNavigate, icon, isCollapsed }) => {
   const isActive = currentView === view;
   const classes = `flex items-center px-4 py-3 text-lg rounded-lg transition-colors duration-200 w-full text-left relative ${
+    isCollapsed ? 'justify-center' : ''
+  } ${
     isActive
       ? 'bg-primary text-white font-semibold shadow-glow-primary'
       : 'text-text-secondary hover:bg-surface/50 hover:text-text-primary'
   }`;
 
   return (
-    <button onClick={() => onNavigate(view)} className={classes}>
-      <span className="mr-3">{icon}</span>
-      {label}
+    <button onClick={() => onNavigate(view)} className={classes} title={isCollapsed ? label : ''}>
+      <span className={isCollapsed ? '' : 'mr-3'}>{icon}</span>
+      {!isCollapsed && label}
     </button>
   );
 };
@@ -39,13 +44,18 @@ const Icons = {
     CostMaster: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v.01M12 6v-1m0-1H8m12 1h-4m-7 11H8m12 0h-4M12 21v-1m0 1v.01M12 18v-1m0-1H8m12 0h-4m-4 5a9 9 0 110-18 9 9 0 010 18z" /></svg>,
     Feedback: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>,
     UserFeedback: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a2 2 0 01-2-2V7a2 2 0 012-2h2.586a1 1 0 01.707.293l2.414 2.414a1 1 0 01.293.707V8z" /></svg>,
+        FaceMilling: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.5 14h.01M12 14h.01M8.5 14h.01M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3M5 10h14M5 10l-2 5h18l-2-5M5 15h14" /></svg>,
     Changelog: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
+<<<<<<< HEAD
     FaceMilling: <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.5 14h.01M12 14h.01M8.5 14h.01M5 10V7a2 2 0 012-2h10a2 2 0 012 2v3M5 10h14M5 10l-2 5h18l-2-5M5 15h14" /></svg>,
-}
+=======
+>>>>>>> 435c69e (Deploy: build & deploy - trigger Netlify)
+        <aside className={`bg-surface text-text-primary flex flex-col p-4 shadow-lg border-r border-border transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, user }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, user, isCollapsed, setIsCollapsed }) => {
   const isSuperAdmin = SUPER_ADMIN_EMAILS.includes(user.email);
   return (
+<<<<<<< HEAD
     <aside className="w-64 bg-surface text-text-primary flex flex-col p-4 shadow-lg border-r border-border">
         <div className="py-4 mb-6 border-b border-border/50">
             <div className="flex items-center justify-center space-x-3 px-2">
@@ -64,23 +74,55 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, user 
                         </div>
                     </>
                 )}
+=======
+    <aside className={`bg-surface text-text-primary flex flex-col p-4 shadow-lg border-r border-border transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <div className="py-4 mb-6 border-b border-border/50 h-[76px] flex items-center justify-between">
+            {!isCollapsed && (
+                <div className="flex items-center justify-center space-x-3 px-2 flex-grow animate-fade-in">
+                    <button onClick={() => onNavigate('calculations')} className="text-left focus:outline-none focus:ring-2 focus:ring-primary rounded-md p-1 flex-shrink-0">
+                        <h1 className="text-2xl font-bold">Costing<span className="text-primary">Hub</span></h1>
+                        <p className="text-xs text-text-muted">All Costs. One Hub.</p>
+                    </button>
+                    {user.company_logo_url && (
+                        <>
+                            <div className="h-10 w-px bg-border mx-2 self-center"></div>
+                            <div className="flex-shrink-0 h-12 w-12 flex items-center justify-center">
+                                <img src={user.company_logo_url} alt="Company Logo" className="max-h-full max-w-full object-contain" />
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+            
+            <div className={`w-full flex ${isCollapsed ? 'justify-center' : 'justify-end'}`}>
+                 <button 
+                    onClick={() => setIsCollapsed(prev => !prev)} 
+                    className="p-2 rounded-lg text-text-secondary hover:bg-surface/50 hover:text-text-primary"
+                    title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                  </svg>
+                </button>
+>>>>>>> 435c69e (Deploy: build & deploy - trigger Netlify)
             </div>
         </div>
+
         <nav className="flex-1 space-y-2">
-            <NavItem label="Machining Calculation" view="calculations" icon={Icons.Calculations} {...{ currentView, onNavigate }} />
-            <NavItem label="Cost Master" view="costMaster" icon={Icons.CostMaster} {...{ currentView, onNavigate }} />
-            <NavItem label="Material Library" view="materials" icon={Icons.Materials} {...{ currentView, onNavigate }} />
-            <NavItem label="Machine Library" view="machines" icon={Icons.Machines} {...{ currentView, onNavigate }} />
-            <NavItem label="Process Library" view="processes" icon={Icons.Processes} {...{ currentView, onNavigate }} />
-            <NavItem label="Tool Library" view="toolLibrary" icon={Icons.Tools} {...{ currentView, onNavigate }} />
-            <NavItem label="Feedback & Requests" view="feedback" icon={Icons.Feedback} {...{ currentView, onNavigate }} />
+            <NavItem label="Machining Calculation" view="calculations" icon={Icons.Calculations} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Cost Master" view="costMaster" icon={Icons.CostMaster} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Material Library" view="materials" icon={Icons.Materials} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Machine Library" view="machines" icon={Icons.Machines} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Process Library" view="processes" icon={Icons.Processes} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Tool Library" view="toolLibrary" icon={Icons.Tools} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            <NavItem label="Feedback & Requests" view="feedback" icon={Icons.Feedback} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
             {isSuperAdmin && (
-              <NavItem label="User Feedback" view="feedbackList" icon={Icons.UserFeedback} {...{ currentView, onNavigate }} />
+              <NavItem label="User Feedback" view="feedbackList" icon={Icons.UserFeedback} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
             )}
         </nav>
-        <div className="mt-auto pt-4 border-t border-border">
-            <NavItem label="Changelog" view="changelog" icon={Icons.Changelog} {...{ currentView, onNavigate }} />
-            <p className="text-xs text-center text-text-muted pt-4">&copy; 2025 CostingHub Inc.</p>
+        <div className="mt-auto pt-4 border-t border-border space-y-2">
+            <NavItem label="Changelog" view="changelog" icon={Icons.Changelog} isCollapsed={isCollapsed} {...{ currentView, onNavigate }} />
+            {!isCollapsed && <p className="text-xs text-center text-text-muted pt-2">&copy; 2025 CostingHub Inc.</p>}
         </div>
     </aside>
   );

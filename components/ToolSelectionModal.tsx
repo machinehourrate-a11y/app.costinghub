@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { Tool } from '../types';
+import type { Tool, View } from '../types';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -12,9 +12,10 @@ interface ToolSelectionModalProps {
   onSelect: (tool: Tool) => void;
   tools: Tool[];
   machineType: string;
+  onNavigate: (view: View) => void;
 }
 
-export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, onClose, onSelect, tools, machineType }) => {
+export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, onClose, onSelect, tools, machineType, onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [brandFilter, setBrandFilter] = useState('All');
@@ -54,6 +55,11 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
     });
   }, [tools, machineType, searchTerm, typeFilter, brandFilter, minDiameter, maxDiameter]);
 
+  const handleCreateNew = () => {
+      onNavigate('toolLibrary');
+      onClose();
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -85,7 +91,8 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
               <Input label="Min Dia" type="number" placeholder="mm" value={minDiameter} onChange={e => setMinDiameter(e.target.value)} />
               <Input label="Max Dia" type="number" placeholder="mm" value={maxDiameter} onChange={e => setMaxDiameter(e.target.value)} />
             </div>
-            <div className="lg:col-span-5 flex justify-end">
+            <div className="lg:col-span-5 flex justify-end items-center gap-4">
+                <Button variant="secondary" onClick={handleCreateNew}>+ Create New Tool</Button>
                 <Button variant="secondary" onClick={resetFilters}>Reset Filters</Button>
             </div>
         </div>

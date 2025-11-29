@@ -371,6 +371,7 @@ export interface CalculatorPageProps {
   user: User;
   existingCalculation: Calculation | null;
   theme: 'light' | 'dark';
+  onNavigate: (view: View) => void;
 }
 
 export interface DashboardPageProps {

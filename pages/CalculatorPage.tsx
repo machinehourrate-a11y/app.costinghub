@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
-import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups, RegionCost, RegionCurrencyMap, Tool } from '../types';
+import type { Calculation, MachiningInput, Operation, MaterialMasterItem, BilletShapeParameters, CalculatorPageProps, Setup, Machine, Process, User, ProcessParameter, MaterialProperty, SurfaceTreatment, Markups, RegionCost, RegionCurrencyMap, Tool, View } from '../types';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -96,7 +96,7 @@ const MarkupSlider: React.FC<MarkupSliderProps> = ({ label, name, value, onChang
     </div>
 );
 
-export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, regionCosts, regionCurrencyMap, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation, theme }) => {
+export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, regionCosts, regionCurrencyMap, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation, theme, onNavigate }) => {
   const [formData, setFormData] = useState<MachiningInput>(INITIAL_INPUT);
   const [errors, setErrors] = useState<{ [key: string]: any }>({});
   const [isUploading, setIsUploading] = useState(false);
@@ -705,6 +705,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 getDisplayValue={getDisplayValue}
                 getMetricValue={getMetricValue}
                 formatCurrency={formatCurrency}
+                onNavigate={onNavigate}
             />
         )}
         <div className="mb-6">
