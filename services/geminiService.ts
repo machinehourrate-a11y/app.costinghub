@@ -2,7 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import type { GeminiSuggestion, GeminiToolSuggestion, GeminiProcessSuggestion, GeminiMachineSuggestion, MaterialMasterItem, Machine, Process, Tool, Operation } from '../types';
 import { TOOL_TYPES, TOOL_MATERIALS, ARBOR_OR_INSERT_OPTIONS, MACHINE_TYPES, ADDITIONAL_AXIS_OPTIONS } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
 
 /**
  * Cleans and parses a JSON string that might be wrapped in markdown code fences.
