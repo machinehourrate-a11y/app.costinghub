@@ -1,192 +1,25 @@
 
-
 import React from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import type { SubscriptionPageProps, SubscriptionPlan, PriceInfo, RazorpayOptions } from '../types';
+import type { User } from '../types';
 
-const formatPrice = (price: number, currency: string) => {
-    try {
-        return new Intl.NumberFormat(undefined, {
-            style: 'currency',
-            currency: currency,
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(price);
-    } catch (e) {
-        // Fallback for unsupported currencies or environments
-        return `${currency} ${price}`;
-    }
-};
-
-const PlanCard: React.FC<{ plan: SubscriptionPlan, userCurrency: string, onChoosePlan: () => void, isCurrent: boolean }> = ({ plan, userCurrency, onChoosePlan, isCurrent }) => {
-    const prices = plan.prices as { [key: string]: PriceInfo } | null;
-    const currency = (prices && Object.keys(prices).includes(userCurrency) ? userCurrency : 'USD');
-    const priceInfo = prices ? (prices[currency] ?? prices.USD) : null;
-    
-    let displayPrice: React.ReactNode;
-    let discountBadge: React.ReactNode | null = null;
-    
-    if (plan.is_custom_price) {
-        displayPrice = "Contact Us";
-    } else if (!priceInfo) {
-        displayPrice = "N/A";
-    } else if (priceInfo.price === 0) {
-        displayPrice = "Free";
-    } else {
-        const salePriceFormatted = formatPrice(priceInfo.price, currency);
-        
-        if (priceInfo.displayPrice && priceInfo.displayPrice > priceInfo.price) {
-            const originalPriceFormatted = formatPrice(priceInfo.displayPrice, currency);
-            const discount = Math.round(((priceInfo.displayPrice - priceInfo.price) / priceInfo.displayPrice) * 100);
-            discountBadge = <span className="absolute text-center text-xs font-bold bg-green-500 text-white py-1 px-3 rounded-full top-10 right-4 transform -translate-y-1/2">Save {discount}%</span>
-            displayPrice = (
-                <div className="flex items-baseline justify-center space-x-2">
-                    <span>{salePriceFormatted}</span>
-                    <span className="text-xl text-text-muted line-through">{originalPriceFormatted}</span>
-                </div>
-            )
-        } else {
-            displayPrice = salePriceFormatted;
-        }
-    }
-
-    const buttonText = isCurrent ? 'Your Current Plan' : plan.cta;
-    const isDisabled = isCurrent || plan.is_custom_price;
-
-    return (
-        <div className={`border rounded-lg p-6 flex flex-col relative transition-all duration-300 ${plan.most_popular && !isCurrent ? 'border-primary border-2 shadow-glow-primary' : 'border-border'} ${isCurrent ? 'bg-primary/10' : ''}`}>
-            {plan.most_popular && !isCurrent && <span className="absolute text-center text-sm font-bold bg-primary text-white py-1 px-4 rounded-full -top-4 left-1/2 -translate-x-1/2">Most Popular</span>}
-            {isCurrent && <span className="absolute text-center text-sm font-bold bg-primary text-white py-1 px-4 rounded-full -top-4 left-1/2 -translate-x-1/2">Current Plan</span>}
-            {discountBadge}
-            <h3 className="text-xl font-bold text-primary pt-4">{plan.name}</h3>
-            <p className="text-4xl font-bold my-4 text-text-primary h-12 flex items-center justify-center">
-                {displayPrice}
-                {plan.period && !plan.is_custom_price && priceInfo && priceInfo.price > 0 && <span className="text-sm font-normal text-text-secondary ml-1">/{plan.period}</span>}
-            </p>
-            <ul className="space-y-2 text-text-secondary flex-grow">
-                {plan.features.map(feature => (
-                    <li key={feature} className="flex items-start">
-                        <svg className="h-5 w-5 text-green-500 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>{feature}</span>
-                    </li>
-                ))}
-            </ul>
-            <Button className="mt-6 w-full" onClick={onChoosePlan} disabled={isDisabled}>{buttonText}</Button>
-        </div>
-    );
+interface SubscriptionPageProps {
+  user: User;
+  onBack: () => void;
 }
 
-export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user, isSuperAdmin, onUpgradePlan, onBack }) => {
-  const isNewUser = !user.plan_id;
+export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack }) => {
+  const usagePercentage = user.calculation_limit === -1 
+    ? 0 
+    : Math.min(100, (user.calculations_created_this_period / user.calculation_limit) * 100);
 
-  const handlePayment = (plan: SubscriptionPlan) => {
-    const prices = plan.prices as { [key: string]: PriceInfo } | null;
-    if (!prices || !user) return;
-
-    const currency = 'USD'; // Default to USD for payments
-    const priceInfo = prices[currency] ?? prices.USD;
-    
-    if (!priceInfo || priceInfo.price <= 0) return;
-
-    const fullAddress = [
-      user.address_line1,
-      user.city,
-      user.state,
-      user.postal_code,
-      user.country,
-    ]
-      .filter(Boolean)
-      .join(', ');
-
-    const options: RazorpayOptions = {
-      key: 'rzp_test_1DP5mmOlF5G5ag', // Standard Razorpay Test Key
-      amount: (priceInfo.price * 100).toString(),
-      currency: currency,
-      name: 'CostingHub Pro',
-      description: `Upgrade to ${plan.name} Plan`,
-      // Replace with your company logo URL
-      image: 'https://cdn.iconscout.com/icon/premium/png-256-thumb/c-5-825313.png',
-      handler: async (response) => {
-        console.log('Payment successful:', response);
-        // On successful payment, call the upgrade handler from App.tsx
-        await onUpgradePlan(plan.id);
-      },
-      prefill: {
-        name: user.name || '',
-        email: user.email || '',
-        contact: user.phone || '',
-      },
-      notes: {
-        address: fullAddress || 'N/A',
-      },
-      theme: {
-        color: '#8b5cf6', // Your brand's primary color
-      },
-    };
-
-    const rzp = new window.Razorpay(options);
-    rzp.on('payment.failed', function (response: any) {
-      console.error('Payment failed:', response);
-      let errorMessage = 'An unknown error occurred. Please try again.';
-      if (response?.error) {
-        if (typeof response.error.description === 'string' && response.error.description) {
-          errorMessage = response.error.description;
-        } else if (typeof response.error.reason === 'string' && response.error.reason) {
-          // The 'reason' field often gives a concise, user-friendly error message.
-          errorMessage = response.error.reason.replace(/_/g, ' ');
-        }
-      }
-      // Capitalize the first letter for better presentation.
-      errorMessage = errorMessage.charAt(0).toUpperCase() + errorMessage.slice(1);
-      alert(`Payment failed: ${errorMessage}`);
-    });
-    rzp.open();
-  };
-  
-  const handleChoosePlan = (plan: SubscriptionPlan) => {
-    // For free plans, directly upgrade without payment.
-    if (plan.id === 'plan_001' || (!plan.is_custom_price && plan.prices && (plan.prices as any).USD.price === 0)) {
-      onUpgradePlan(plan.id);
-      return;
-    }
-    // For paid plans, initiate payment flow.
-    if (!plan.is_custom_price && plan.prices) {
-      handlePayment(plan);
-      return;
-    }
-    // For enterprise plans, show contact info.
-    if (plan.is_custom_price) {
-      alert('Please contact sales@costinghub.com for Enterprise plan details.');
-      return;
-    }
+  const handleRedirectToPricing = () => {
+    window.location.href = 'https://costinghub.com/pricing';
   };
 
-  if (isSuperAdmin) {
-    return (
-      <div className="w-full max-w-5xl mx-auto animate-fade-in">
-        <div className="mb-6">
-            <Button variant="secondary" onClick={onBack}>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                Back to Settings
-            </Button>
-        </div>
-        <Card>
-          <div className="text-center p-8">
-            <h2 className="text-3xl font-bold text-primary">Admin Access</h2>
-            <p className="text-text-secondary mt-2">As a super admin, you have unlimited access to all features. No subscription plan is required.</p>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-  
   return (
-    <div className="w-full max-w-5xl mx-auto animate-fade-in">
+    <div className="w-full max-w-4xl mx-auto animate-fade-in">
        <div className="mb-6">
             <Button variant="secondary" onClick={onBack}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -195,31 +28,56 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ plans, user,
                 Back to Settings
             </Button>
         </div>
-      <Card>
-        <div className="text-center mb-10">
-            {isNewUser ? (
-                <>
-                    <h2 className="text-3xl font-bold text-primary">Welcome to CostingHub!</h2>
-                    <p className="text-text-secondary mt-2">To get started, please select a subscription plan below.</p>
-                </>
-            ) : (
-                <>
-                    <h2 className="text-3xl font-bold text-primary">Choose Your Plan</h2>
-                    <p className="text-text-secondary mt-2">Select the plan that best fits your production needs.</p>
-                </>
-            )}
+      
+      <Card className="text-center p-8 sm:p-12">
+        <div className="mb-10">
+            <h2 className="text-3xl font-black text-primary uppercase tracking-tight">Plan Overview</h2>
+            <p className="text-text-secondary mt-2">View your current manufacturing capabilities.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <PlanCard 
-              key={plan.id} 
-              plan={plan} 
-              userCurrency={'USD'}
-              onChoosePlan={() => handleChoosePlan(plan)}
-              isCurrent={plan.id === user.plan_id}
-            />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
+            <div className="bg-background/50 p-6 rounded-xl border border-border">
+                <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest mb-4">Current Active Plan</h3>
+                <div className="flex items-baseline gap-2">
+                    <span className="text-3xl font-black text-text-primary uppercase tracking-tighter">{user.plan_name || 'Free'}</span>
+                    <span className="text-xs font-bold text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full uppercase">Active</span>
+                </div>
+                {user.subscription_expires_on && (
+                    <p className="text-sm text-text-secondary mt-2">
+                        Renews/Expires on <span className="font-bold text-text-primary">{new Date(user.subscription_expires_on).toLocaleDateString()}</span>
+                    </p>
+                )}
+            </div>
+
+            <div className="bg-background/50 p-6 rounded-xl border border-border">
+                <h3 className="text-sm font-bold text-text-muted uppercase tracking-widest mb-4">Calculation Usage</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <span className="text-2xl font-black text-text-primary tracking-tighter">
+                        {user.calculations_created_this_period} <span className="text-sm text-text-secondary">/ {user.calculation_limit === -1 ? '∞' : user.calculation_limit}</span>
+                    </span>
+                    <span className="text-xs font-bold text-text-muted uppercase tracking-widest">Job Estimates</span>
+                </div>
+                <div className="w-full bg-surface h-2.5 rounded-full overflow-hidden border border-border">
+                    <div 
+                        className={`h-full transition-all duration-700 ease-out ${usagePercentage > 90 ? 'bg-red-500' : 'bg-primary'}`}
+                        style={{ width: `${user.calculation_limit === -1 ? 0 : usagePercentage}%` }}
+                    ></div>
+                </div>
+                <p className="text-[10px] text-text-muted mt-2 uppercase font-black tracking-widest leading-tight">
+                    Quotas reset on your billing anniversary.
+                </p>
+            </div>
+        </div>
+
+        <div className="bg-primary/5 p-8 rounded-2xl border border-primary/20 border-2">
+            <h3 className="text-xl font-black text-text-primary mb-2 uppercase tracking-tight">Need more scale?</h3>
+            <p className="text-text-secondary mb-8 max-w-lg mx-auto font-medium">
+                Unlock unlimited calculations, advanced exports, and multi-user support by upgrading your plan on our website.
+            </p>
+            <Button onClick={handleRedirectToPricing} className="!px-12 !py-4 text-lg font-black uppercase tracking-widest shadow-glow-primary">
+                View Plans & Pricing →
+            </Button>
+            <p className="text-[10px] text-text-muted mt-4 font-bold uppercase">Safe, secure checkout via costinghub.com</p>
         </div>
       </Card>
     </div>

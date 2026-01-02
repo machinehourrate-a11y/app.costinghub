@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ThemeToggle } from '../components/ThemeToggle';
 
@@ -9,7 +10,7 @@ interface PublicLayoutProps {
 
 const Footer: React.FC = () => {
   return (
-    <footer className="bg-background border-t border-border">
+    <footer className="bg-surface border-t border-border">
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
             <div>
@@ -27,7 +28,7 @@ export const PublicLayout: React.FC<PublicLayoutProps> = ({ children, theme, set
   return (
     <div className="min-h-screen flex flex-col bg-background text-text-primary">
        <header className="bg-surface shadow-sm p-4 border-b border-border">
-          <div className="w-full mx-auto flex justify-between items-center">
+          <div className="w-full max-w-7xl mx-auto flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Costing<span className="text-primary">Hub</span></h1>
             </div>

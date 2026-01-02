@@ -24,11 +24,13 @@ interface OperationModalProps {
     getMetricValue: (displayValue: number, imperialUnit: string) => number;
     formatCurrency: (value: number) => string;
     onNavigate: (view: View) => void;
+    onAddTool: (tool: Tool) => void;
+    isSuperAdmin?: boolean;
 }
 
 export const OperationModal: React.FC<OperationModalProps> = ({
     isOpen, onClose, onSave, setup, operationToEdit,
-    processes, tools, machines, isMetric, getDisplayValue, getMetricValue, formatCurrency, onNavigate
+    processes, tools, machines, isMetric, getDisplayValue, getMetricValue, formatCurrency, onNavigate, onAddTool, isSuperAdmin
 }) => {
     // State
     const [formData, setFormData] = useState<Partial<Operation>>({});
@@ -155,8 +157,8 @@ export const OperationModal: React.FC<OperationModalProps> = ({
                     </div>
                 </div>
             )}
-            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">
-                {isToolModalOpen && (
+            <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 sm:p-4 animate-fade-in">
+                 {isToolModalOpen && (
                     <ToolSelectionModal
                         isOpen={isToolModalOpen}
                         onClose={() => setIsToolModalOpen(false)}
@@ -164,11 +166,14 @@ export const OperationModal: React.FC<OperationModalProps> = ({
                         tools={tools}
                         machineType={machineForSetup.machineType}
                         onNavigate={onNavigate}
+                        onAddTool={onAddTool}
+                        isSuperAdmin={isSuperAdmin}
                     />
                 )}
                 
-                <Card className="max-w-5xl w-full relative max-h-[90vh] flex flex-col">
-                    <div className="flex justify-between items-center mb-4 border-b border-border pb-4 flex-shrink-0">
+                <Card className="w-full sm:max-w-5xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col relative !rounded-none sm:!rounded-xl !p-0">
+                    {/* Header */}
+                    <div className="flex justify-between items-center p-4 border-b border-border bg-surface flex-shrink-0 sticky top-0 z-10">
                         <div className="flex items-center gap-4">
                              {selectedProcessId && !operationToEdit && (
                                 <button onClick={handleBackToSelection} className="text-text-secondary hover:text-primary flex items-center">
@@ -178,39 +183,39 @@ export const OperationModal: React.FC<OperationModalProps> = ({
                                     Back
                                 </button>
                             )}
-                            <h2 className="text-2xl font-bold text-primary">
+                            <h2 className="text-xl sm:text-2xl font-bold text-primary">
                                 {selectedProcessId ? (operationToEdit ? 'Edit Operation' : `Add ${formData.processName}`) : 'Select Operation'}
                             </h2>
                         </div>
-                        <button onClick={onClose} className="text-text-muted hover:text-text-primary">
+                        <button onClick={onClose} className="text-text-muted hover:text-text-primary p-2">
                             <CloseIcon />
                         </button>
                     </div>
 
-                    <div className="overflow-y-auto pr-2 flex-grow">
+                    <div className="overflow-y-auto p-4 flex-grow">
                         {!selectedProcessId ? (
                             /* Process Selection Grid */
                             <div>
                                 <p className="text-text-secondary mb-4">Select a process for <span className="font-semibold text-text-primary">{machineForSetup.name}</span> ({machineForSetup.machineType})</p>
                                 {availableProcesses.length > 0 ? (
-                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                                         {availableProcesses.map(process => (
                                             <button
                                                 key={process.id}
                                                 onClick={() => handleProcessSelect(process)}
-                                                className="flex flex-col items-center p-4 bg-surface border border-border rounded-xl hover:border-primary hover:shadow-lg transition-all duration-200 group text-center h-full"
+                                                className="flex flex-col items-center p-3 sm:p-4 bg-surface border border-border rounded-xl hover:border-primary hover:shadow-lg transition-all duration-200 group text-center h-full active:scale-95"
                                             >
-                                                <div className="h-16 w-16 mb-3 flex items-center justify-center bg-background rounded-full group-hover:scale-110 transition-transform duration-200">
+                                                <div className="h-12 w-12 sm:h-16 sm:w-16 mb-3 flex items-center justify-center bg-background rounded-full group-hover:scale-110 transition-transform duration-200">
                                                     {process.imageUrl ? (
-                                                        <img src={process.imageUrl} alt={process.name} className="h-10 w-10 object-contain opacity-80 group-hover:opacity-100" />
+                                                        <img src={process.imageUrl} alt={process.name} className="h-8 w-8 sm:h-10 sm:w-10 object-contain opacity-80 group-hover:opacity-100" />
                                                     ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-text-muted group-hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 sm:h-8 sm:w-8 text-text-muted group-hover:text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                                         </svg>
                                                     )}
                                                 </div>
-                                                <span className="font-medium text-text-primary group-hover:text-primary">{process.name}</span>
+                                                <span className="text-sm sm:text-base font-medium text-text-primary group-hover:text-primary leading-tight">{process.name}</span>
                                                 <span className="text-xs text-text-muted mt-1">{process.group}</span>
                                             </button>
                                         ))}
@@ -259,9 +264,9 @@ export const OperationModal: React.FC<OperationModalProps> = ({
                     </div>
 
                     {selectedProcessId && (
-                        <div className="flex justify-end space-x-4 mt-4 pt-4 border-t border-border flex-shrink-0">
-                            <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                            <Button onClick={handleSave}>
+                        <div className="p-4 border-t border-border flex justify-end space-x-4 bg-surface sticky bottom-0 z-10">
+                            <Button variant="secondary" onClick={onClose} className="flex-1 sm:flex-none justify-center">Cancel</Button>
+                            <Button onClick={handleSave} className="flex-1 sm:flex-none justify-center">
                                 {operationToEdit ? 'Save Changes' : 'Add Operation'}
                             </Button>
                         </div>

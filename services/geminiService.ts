@@ -131,10 +131,10 @@ const materialResponseSchema = {
     required: ["name", "category", "properties"]
 };
 
-export const suggestMaterial = async (prompt: string): Promise<GeminiSuggestion | null> => {
+export const suggestMaterial = async (prompt: string): Promise<GeminiSuggestion> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: `Based on the following description, provide a detailed material profile. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -143,23 +143,23 @@ export const suggestMaterial = async (prompt: string): Promise<GeminiSuggestion 
         });
         
         const suggestedData = cleanAndParseJson(response.text);
-        
         if (!suggestedData) {
-            console.error("Parsing Gemini response for material suggestion resulted in null.");
-            return null;
+            throw new Error("The AI returned an invalid or empty response.");
         }
-
         return suggestedData as GeminiSuggestion;
     } catch (error) {
         console.error("Error calling Gemini API for material suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
-export const suggestMultipleMaterials = async (prompt: string): Promise<Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleMaterials = async (prompt: string): Promise<Omit<MaterialMasterItem, 'id' | 'user_id' | 'created_at'>[]> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: `Based on the following request, provide a list of detailed material profiles. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -168,18 +168,16 @@ export const suggestMultipleMaterials = async (prompt: string): Promise<Omit<Mat
         });
         
         const suggestedData = cleanAndParseJson(response.text);
-
         if (!suggestedData || !Array.isArray(suggestedData)) {
-            console.error("Parsing Gemini response for multiple materials resulted in null or non-array.", suggestedData);
-            return null;
+             throw new Error("The AI returned an invalid or non-array response.");
         }
-
-        const typedSuggestions = suggestedData as GeminiSuggestion[];
-        
-        return typedSuggestions;
+        return suggestedData as GeminiSuggestion[];
     } catch (error) {
         console.error("Error calling Gemini API for multiple material suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
@@ -202,10 +200,10 @@ const toolResponseSchema = {
     required: ["brand", "model", "toolType", "material", "diameter", "arborOrInsert", "compatibleMachineTypes"]
 };
 
-export const suggestTool = async (prompt: string): Promise<GeminiToolSuggestion | null> => {
+export const suggestTool = async (prompt: string): Promise<GeminiToolSuggestion> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: `Based on the following description, provide a detailed tool profile including brand, model, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -213,10 +211,8 @@ export const suggestTool = async (prompt: string): Promise<GeminiToolSuggestion 
             },
         });
         const suggestion = cleanAndParseJson(response.text);
-
         if (!suggestion) {
-            console.error("Parsing Gemini response for tool suggestion resulted in null.");
-            return null;
+            throw new Error("The AI returned an invalid or empty response.");
         }
         
         if (suggestion.numberOfTeeth != null) {
@@ -229,14 +225,17 @@ export const suggestTool = async (prompt: string): Promise<GeminiToolSuggestion 
         return suggestion as GeminiToolSuggestion;
     } catch (error) {
         console.error("Error calling Gemini API for tool suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
-export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, 'id' | 'user_id' | 'created_at'>[]> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: `Based on the following request, provide a list of detailed tool profiles including brand, model, and estimated life. Infer typical cutting parameters for a common material if not specified. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -246,8 +245,7 @@ export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, '
         const suggestions = cleanAndParseJson(response.text);
         
         if (!suggestions || !Array.isArray(suggestions)) {
-            console.error("Parsing Gemini response for multiple tools resulted in null or non-array.", suggestions);
-            return null;
+            throw new Error("The AI returned an invalid or non-array response.");
         }
 
         const typedSuggestions = suggestions as GeminiToolSuggestion[];
@@ -274,7 +272,10 @@ export const suggestMultipleTools = async (prompt: string): Promise<Omit<Tool, '
         });
     } catch (error) {
         console.error("Error calling Gemini API for multiple tool suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
@@ -289,7 +290,7 @@ const toolLifeResponseSchema = {
     required: ["estimatedLife"]
 };
 
-export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at' | 'price'>): Promise<number | null> => {
+export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'created_at' | 'price'>): Promise<number> => {
     const prompt = `
         Given the following tool parameters:
         - Tool Type: ${tool.toolType}
@@ -305,7 +306,7 @@ export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'cre
     `;
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -314,19 +315,17 @@ export const calculateToolLife = async (tool: Omit<Tool, 'id' | 'user_id' | 'cre
         });
         const result = cleanAndParseJson(response.text);
 
-        if (!result) {
-            console.error("Parsing Gemini response for tool life calculation resulted in null.");
-            return null;
+        if (!result || typeof result.estimatedLife !== 'number') {
+            throw new Error("The AI returned an invalid or empty response for tool life.");
         }
         
-        if (typeof result.estimatedLife === 'number') {
-            return Math.round(result.estimatedLife);
-        }
-        
-        return null;
+        return Math.round(result.estimatedLife);
     } catch (error) {
         console.error("Error calling Gemini API for tool life calculation:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI calculation failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
@@ -341,7 +340,7 @@ const operationToolLifeResponseSchema = {
     required: ["estimatedLife"]
 };
 
-export const calculateOperationToolLife = async (tool: Tool, operation: Operation, process: Process): Promise<number | null> => {
+export const calculateOperationToolLife = async (tool: Tool, operation: Operation, process: Process): Promise<number> => {
     const paramsString = (process.parameters as any[])
         .map((p: any) => `- ${p.label}: ${operation.parameters[p.name] ?? 'N/A'} ${p.unit}`)
         .join('\n');
@@ -368,7 +367,7 @@ export const calculateOperationToolLife = async (tool: Tool, operation: Operatio
     `;
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -377,19 +376,17 @@ export const calculateOperationToolLife = async (tool: Tool, operation: Operatio
         });
         const result = cleanAndParseJson(response.text);
 
-        if (!result) {
-            console.error("Parsing Gemini response for operation tool life resulted in null.");
-            return null;
+        if (!result || typeof result.estimatedLife !== 'number') {
+            throw new Error("The AI returned an invalid or empty response for operation tool life.");
         }
         
-        if (typeof result.estimatedLife === 'number') {
-            return Math.round(result.estimatedLife);
-        }
-        
-        return null;
+        return Math.round(result.estimatedLife);
     } catch (error) {
         console.error("Error calling Gemini API for operation tool life calculation:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI calculation failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
@@ -422,10 +419,10 @@ const processResponseSchema = {
 };
 
 
-export const suggestProcess = async (prompt: string): Promise<GeminiProcessSuggestion | null> => {
+export const suggestProcess = async (prompt: string): Promise<GeminiProcessSuggestion> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: `Based on the following description, define a manufacturing process profile, including its typical calculation parameters and a URL to a schematic image. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -434,20 +431,22 @@ export const suggestProcess = async (prompt: string): Promise<GeminiProcessSugge
         });
         const suggestion = cleanAndParseJson(response.text);
         if (!suggestion) {
-            console.error("Parsing Gemini response for process suggestion resulted in null.");
-            return null;
+            throw new Error("The AI returned an invalid or empty response.");
         }
         return suggestion as GeminiProcessSuggestion;
     } catch (error) {
         console.error("Error calling Gemini API for process suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
-export const suggestMultipleProcesses = async (prompt: string): Promise<Omit<Process, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleProcesses = async (prompt: string): Promise<Omit<Process, 'id' | 'user_id' | 'created_at'>[]> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: `Based on the following request, provide a list of manufacturing process profiles, including their typical calculation parameters and a URL to a schematic image for each. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -456,13 +455,15 @@ export const suggestMultipleProcesses = async (prompt: string): Promise<Omit<Pro
         });
         const suggestions = cleanAndParseJson(response.text);
         if (!suggestions || !Array.isArray(suggestions)) {
-            console.error("Parsing Gemini response for multiple processes resulted in null or non-array.", suggestions);
-            return null;
+            throw new Error("The AI returned an invalid or non-array response.");
         }
         return suggestions as GeminiProcessSuggestion[];
     } catch (error) {
         console.error("Error calling Gemini API for multiple process suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
@@ -481,10 +482,10 @@ const machineResponseSchema = {
     required: ["brand", "model", "machineType", "xAxis", "yAxis", "zAxis", "powerKw", "additionalAxis"]
 };
 
-export const suggestMachine = async (prompt: string): Promise<GeminiMachineSuggestion | null> => {
+export const suggestMachine = async (prompt: string): Promise<GeminiMachineSuggestion> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: `Based on the following description, provide a detailed machine profile. Description: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -493,20 +494,22 @@ export const suggestMachine = async (prompt: string): Promise<GeminiMachineSugge
         });
         const suggestion = cleanAndParseJson(response.text);
         if (!suggestion) {
-            console.error("Parsing Gemini response for machine suggestion resulted in null.");
-            return null;
+            throw new Error("The AI returned an invalid or empty response.");
         }
         return suggestion as GeminiMachineSuggestion;
     } catch (error) {
         console.error("Error calling Gemini API for machine suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };
 
-export const suggestMultipleMachines = async (prompt: string): Promise<Omit<Machine, 'id' | 'user_id' | 'created_at'>[] | null> => {
+export const suggestMultipleMachines = async (prompt: string): Promise<Omit<Machine, 'id' | 'user_id' | 'created_at'>[]> => {
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
+            model: 'gemini-3-pro-preview',
             contents: `Based on the following request, provide a list of detailed machine profiles. Request: "${prompt}"`,
             config: {
                 responseMimeType: "application/json",
@@ -516,8 +519,7 @@ export const suggestMultipleMachines = async (prompt: string): Promise<Omit<Mach
         const suggestions = cleanAndParseJson(response.text);
         
         if (!suggestions || !Array.isArray(suggestions)) {
-            console.error("Parsing Gemini response for multiple machines resulted in null or non-array.", suggestions);
-            return null;
+            throw new Error("The AI returned an invalid or non-array response.");
         }
 
         const typedSuggestions = suggestions as GeminiMachineSuggestion[];
@@ -525,6 +527,9 @@ export const suggestMultipleMachines = async (prompt: string): Promise<Omit<Mach
 
     } catch (error) {
         console.error("Error calling Gemini API for multiple machine suggestion:", error);
-        return null;
+        if (error instanceof Error) {
+            throw new Error(`AI suggestion failed: ${error.message}`);
+        }
+        throw new Error("An unknown error occurred with the AI service.");
     }
 };

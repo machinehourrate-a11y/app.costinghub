@@ -105,14 +105,10 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
     setSuggestionError('');
     try {
         const suggestion = await suggestTool(suggestionPrompt);
-        if (suggestion) {
-            setFormData(prev => ({ ...prev, ...suggestion }));
-        } else {
-            setSuggestionError('Could not generate a suggestion. Please try a different prompt.');
-        }
+        setFormData(prev => ({ ...prev, ...suggestion }));
     } catch (error) {
         console.error('Gemini suggestion failed:', error);
-        setSuggestionError('An error occurred while getting suggestions.');
+        setSuggestionError(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
         setIsSuggesting(false);
     }
@@ -120,14 +116,15 @@ export const ToolModal: React.FC<ToolModalProps> = ({ tool, onSave, onClose, cur
 
   const handleCalculateLife = async () => {
     setIsCalculatingLife(true);
-    const life = await calculateToolLife(formData);
-    if (life !== null) {
+    try {
+      const life = await calculateToolLife(formData);
       setFormData(prev => ({ ...prev, estimatedLife: life }));
-    } else {
-      // You can add a user-facing error message here if desired
-      console.error("Failed to calculate tool life.");
+    } catch (error) {
+        console.error("Failed to calculate tool life.", error);
+        alert(error instanceof Error ? error.message : "An unknown error occurred.");
+    } finally {
+      setIsCalculatingLife(false);
     }
-    setIsCalculatingLife(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {

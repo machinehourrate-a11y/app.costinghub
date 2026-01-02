@@ -1,3 +1,4 @@
+
 export type Json =
   | string
   | number
@@ -9,6 +10,46 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      // Added calculation_shares table definition
+      calculation_shares: {
+        Row: {
+          created_at: string
+          id: string
+          calculation_id: string
+          shared_with_email: string
+          shared_by_user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          calculation_id: string
+          shared_with_email: string
+          shared_by_user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          calculation_id?: string
+          shared_with_email?: string
+          shared_by_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calculation_shares_calculation_id_fkey"
+            columns: ["calculation_id"]
+            isOneToOne: false
+            referencedRelation: "calculations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calculation_shares_shared_by_user_id_fkey"
+            columns: ["shared_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       calculations: {
         Row: {
           created_at: string
@@ -43,6 +84,36 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      }
+      documentation_content: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          image_caption: string
+          image_url: string | null
+          step: number
+          title: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id: string
+          image_caption: string
+          image_url?: string | null
+          step: number
+          title: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          image_caption?: string
+          image_url?: string | null
+          step?: number
+          title?: string
+        }
+        Relationships: []
       }
       feedback: {
         Row: {
@@ -367,7 +438,7 @@ export interface Database {
         }
         Insert: {
           created_at?: string
-          currency: string
+          currency?: string
           id?: string
           region: string
           user_id: string

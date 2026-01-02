@@ -1,10 +1,13 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import type { ResultsPageProps } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ResultsDisplay } from '../components/ResultsDisplay';
+import { QuoteModal } from '../components/QuoteModal';
 
 export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, user }) => {
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
 
   if (!calculation || !calculation.results) {
     return (
@@ -35,12 +38,18 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
 
   return (
     <div className="w-full max-w-6xl mx-auto animate-fade-in">
-        <div className="mb-6">
+        <div className="mb-6 flex justify-between items-center">
             <Button variant="secondary" onClick={onBack}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
                 Back to Calculations
+            </Button>
+            <Button onClick={() => setIsQuoteModalOpen(true)}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Generate Quote
             </Button>
         </div>
         <div className="mb-4 bg-surface shadow rounded-lg p-4 flex justify-between items-center border border-border">
@@ -60,6 +69,14 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({ calculation, onBack, u
               markups={calculation.inputs.markups}
             />
         </Card>
+
+        {isQuoteModalOpen && (
+            <QuoteModal
+                calculation={calculation}
+                user={user}
+                onClose={() => setIsQuoteModalOpen(false)}
+            />
+        )}
     </div>
   );
 };

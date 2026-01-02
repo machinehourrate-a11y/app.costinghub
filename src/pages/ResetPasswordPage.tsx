@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Input } from '../components/ui/Input';
@@ -30,8 +31,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onPassword
     setSuccess('');
     setLoading(true);
 
-    // FIX: `updateUser` is on the `api` object in older versions of the SDK.
-    const { error } = await supabase.auth.api.updateUser({ password });
+    const { error } = await supabase.auth.updateUser({ password });
 
     setLoading(false);
     if (error) {

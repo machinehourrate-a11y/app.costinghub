@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -31,7 +32,6 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
-  // FIX: Converted user email to lowercase for case-insensitive super admin check.
   const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()), [user.email]);
 
   // Memoized filtering logic
@@ -170,7 +170,9 @@ export const ProcessLibraryPage: React.FC<ProcessLibraryPageProps> = ({
                 <Button variant="secondary" onClick={handleToggleSelectionMode}>
                   {isSelectionMode ? 'Cancel' : 'Select'}
                 </Button>
-                <Button onClick={handleAddNew}>+ Add New Process</Button>
+                {isSuperAdmin && (
+                    <Button onClick={handleAddNew}>+ Add New Process</Button>
+                )}
                 {isSuperAdmin ? (
                   <Button onClick={() => setIsMultiModalOpen(true)}>+ Add Multiple with AI</Button>
                 ) : (

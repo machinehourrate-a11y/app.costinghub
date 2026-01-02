@@ -1,6 +1,4 @@
-
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { DisplayField } from './ui/DisplayField';
@@ -28,11 +26,19 @@ export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
     isMetric, getDisplayValue, getMetricValue, formatCurrency, onSetMaximizedImage
 }) => {
     const [isCalculatingLife, setIsCalculatingLife] = useState(false);
+    const [useManualParams, setUseManualParams] = useState(false);
     
     const selectedTool = useMemo(() => tools.find(t => t.id === formData.toolId), [formData.toolId, tools]);
     const isTurningProcess = process.group === 'Turning';
 
-    // Determine if values are overridden relative to the selected tool defaults
+    // Initialize manual params toggle if data already exists
+    useEffect(() => {
+        if (formData.parameters?.manualSpindleSpeed || formData.parameters?.manualFeedRate) {
+            setUseManualParams(true);
+        }
+    }, []);
+
+    // Determine if values are overridden relative to the selected tool defaults (standard override)
     const isOverriding = useMemo(() => {
         if (!selectedTool) return false;
         const currentSpeed = formData.parameters?.cuttingSpeed;
@@ -70,17 +76,29 @@ export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
             }));
         }
     };
+    
+    const handleToggleManual = (enabled: boolean) => {
+        setUseManualParams(enabled);
+        if (!enabled) {
+            // Clear manual params
+            setFormData(prev => {
+                const newParams = { ...prev.parameters };
+                delete newParams.manualSpindleSpeed;
+                delete newParams.manualFeedRate;
+                return { ...prev, parameters: newParams };
+            });
+        }
+    };
 
     const handleCalculateOpLife = async () => {
         if (!selectedTool) return;
         setIsCalculatingLife(true);
         try {
             const life = await calculateOperationToolLife(selectedTool, formData as Operation, process);
-            if (life !== null) {
-                setFormData(prev => ({ ...prev, estimatedToolLifeHours: life }));
-            }
+            setFormData(prev => ({ ...prev, estimatedToolLifeHours: life }));
         } catch (e) {
             console.error(e);
+            alert(e instanceof Error ? e.message : "An unknown error occurred.");
         } finally {
             setIsCalculatingLife(false);
         }
@@ -101,36 +119,33 @@ export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
             }
         }
 
-        // RPM & Feed Display
-        const vc = op.parameters?.cuttingSpeed ?? 0;
-        const dia = selectedTool?.diameter ?? 0; // Or workpiece dia for turning, typically derived in calc service but simple approximation here for display
-        
-        // Re-derive RPM for display purposes. Note: calculateOperationTime does this internally more robustly.
-        // We'll use a simple approximation for the UI.
+        // RPM & Feed Display (for derivation purposes in UI)
         let rpm = 0;
         let feedRate = 0;
 
-        // For Turning, RPM depends on diameterStart/End usually.
-        // For Milling, RPM depends on Tool Diameter.
-        const diameterForRpm = isTurningProcess 
-            ? (op.parameters?.diameterStart ?? op.parameters?.facingDiameter ?? op.parameters?.partingDiameter ?? 0) 
-            : dia;
+        if (useManualParams) {
+            rpm = op.parameters?.manualSpindleSpeed || 0;
+            feedRate = op.parameters?.manualFeedRate || 0;
+        } else {
+            const vc = op.parameters?.cuttingSpeed ?? 0;
+            const dia = selectedTool?.diameter ?? 0; 
+            const diameterForRpm = isTurningProcess 
+                ? (op.parameters?.diameterStart ?? op.parameters?.facingDiameter ?? op.parameters?.partingDiameter ?? 0) 
+                : dia;
+                
+            if (vc > 0 && diameterForRpm > 0) {
+                 rpm = (vc * 1000) / (Math.PI * diameterForRpm);
+            }
             
-        if (vc > 0 && diameterForRpm > 0) {
-             rpm = (vc * 1000) / (Math.PI * diameterForRpm);
+            if (rpm > 0) {
+                 const feedParam = isTurningProcess ? (op.parameters?.feedPerRev ?? 0) : (op.parameters?.feedPerTooth ?? 0);
+                 const teeth = isTurningProcess ? 1 : (selectedTool?.numberOfTeeth ?? 1);
+                 feedRate = rpm * feedParam * teeth;
+            }
         }
-        
-        if (rpm > 0) {
-             const feedParam = isTurningProcess ? (op.parameters?.feedPerRev ?? 0) : (op.parameters?.feedPerTooth ?? 0);
-             const teeth = isTurningProcess ? 1 : (selectedTool?.numberOfTeeth ?? 1);
-             feedRate = rpm * feedParam * teeth;
-        }
-        
-        // If calculateOperationTime returned valid time but our simple UI math failed (e.g. complex formula), 
-        // we rely on time.
 
         return { cycleTime: time, machineCost: mCost, toolCost: tCost, calculatedRpm: Math.round(rpm), calculatedFeedRate: Math.round(feedRate) };
-    }, [formData, process, selectedTool, setup.efficiency, machine, isTurningProcess]);
+    }, [formData, process, selectedTool, setup.efficiency, machine, isTurningProcess, useManualParams]);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
@@ -153,38 +168,68 @@ export const StandardOperationForm: React.FC<StandardOperationFormProps> = ({
                     </div>
                 </div>
 
-                {/* Cutting Data Section - Moved to Left for better flow with inputs */}
+                {/* Cutting Data Section */}
                 <div className="space-y-4">
                     <div className="flex justify-between items-end border-b border-border pb-2">
                         <h3 className="text-lg font-semibold text-text-primary">2. Cutting Data</h3>
-                         {selectedTool && isOverriding && (
-                            <button onClick={handleToggleOverride} className="text-xs text-primary hover:underline">
-                                Reset to Tool Defaults
-                            </button>
-                        )}
+                        <div className="flex items-center gap-4">
+                             {selectedTool && isOverriding && !useManualParams && (
+                                <button onClick={handleToggleOverride} className="text-xs text-primary hover:underline">
+                                    Reset to Tool Defaults
+                                </button>
+                            )}
+                            <label className="flex items-center cursor-pointer text-sm">
+                                <input 
+                                    type="checkbox" 
+                                    checked={useManualParams} 
+                                    onChange={(e) => handleToggleManual(e.target.checked)} 
+                                    className="mr-2 h-4 w-4 text-primary rounded border-border focus:ring-primary"
+                                />
+                                Manual Mode
+                            </label>
+                        </div>
                     </div>
                     
-                    {!selectedTool ? (
+                    {!selectedTool && !useManualParams ? (
                          <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-600 text-sm">
-                            Please select a tool to view and edit cutting data.
+                            Please select a tool to view and edit cutting data, or enable Manual Mode.
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-4">
-                            <Input
-                                label={isMetric ? "Cutting Speed (Vc)" : "Surface Speed (SFM)"}
-                                type="number" step="any"
-                                value={getDisplayValue(formData.parameters?.cuttingSpeed || 0, 'm/min')}
-                                onChange={e => handleParamChange('cuttingSpeed', e.target.value, 'm/min')}
-                                unit={isMetric ? "m/min" : "sfm"}
-                            />
-                            <Input
-                                label={isTurningProcess ? "Feed per Rev" : "Feed per Tooth"}
-                                type="number" step="any"
-                                value={getDisplayValue(isTurningProcess ? (formData.parameters?.feedPerRev || 0) : (formData.parameters?.feedPerTooth || 0), 'mm')}
-                                onChange={e => handleParamChange(isTurningProcess ? 'feedPerRev' : 'feedPerTooth', e.target.value, 'mm')}
-                                unit={isMetric ? (isTurningProcess ? "mm/rev" : "mm") : (isTurningProcess ? "in/rev" : "in")}
-                            />
-                        </div>
+                        useManualParams ? (
+                            <div className="grid grid-cols-2 gap-4 bg-primary/5 p-4 rounded-lg border border-primary/20">
+                                <Input
+                                    label="Spindle Speed"
+                                    type="number" step="any"
+                                    value={formData.parameters?.manualSpindleSpeed || ''}
+                                    onChange={e => handleParamChange('manualSpindleSpeed', e.target.value, 'RPM')}
+                                    unit="RPM"
+                                />
+                                <Input
+                                    label="Feed Rate"
+                                    type="number" step="any"
+                                    value={getDisplayValue(formData.parameters?.manualFeedRate || 0, 'mm/min')}
+                                    onChange={e => handleParamChange('manualFeedRate', e.target.value, 'mm/min')}
+                                    unit={isMetric ? "mm/min" : "in/min"}
+                                />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    label={isMetric ? "Cutting Speed (Vc)" : "Surface Speed (SFM)"}
+                                    type="number" step="any"
+                                    value={getDisplayValue(formData.parameters?.cuttingSpeed || 0, 'm/min')}
+                                    onChange={e => handleParamChange('cuttingSpeed', e.target.value, 'm/min')}
+                                    unit={isMetric ? "m/min" : "sfm"}
+                                />
+                                <Input
+                                    label={isTurningProcess ? "Feed per Rev" : "Feed per Tooth"}
+                                    type="number" step="any"
+                                    value={getDisplayValue(isTurningProcess ? (formData.parameters?.feedPerRev || 0) : (formData.parameters?.feedPerTooth || 0), 'mm')}
+                                    onChange={e => handleParamChange(isTurningProcess ? 'feedPerRev' : 'feedPerTooth', e.target.value, 'mm')}
+                                    unit={isMetric ? (isTurningProcess ? "mm/rev" : "mm") : (isTurningProcess ? "in/rev" : "in")}
+                                />
+                            </div>
+                        )
                     )}
                 </div>
             </div>

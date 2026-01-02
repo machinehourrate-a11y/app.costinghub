@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { SettingsPageProps, User } from '../types';
 import { Card } from '../components/ui/Card';
@@ -29,7 +30,8 @@ const getExpiryStatus = (expiryDateString: string | null) => {
     };
 };
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, plans, onNavigate, isSuperAdmin }) => {
+// Fix: Removed 'plans' from props as it is no longer passed.
+export const SettingsPage: React.FC<SettingsPageProps> = ({ user, session, onUpdateUser, onNavigate, isSuperAdmin }) => {
     const [formData, setFormData] = useState<User>(user);
     const [saved, setSaved] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -40,7 +42,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
         setFormData(user);
     }, [user]);
 
-    const currentPlan = plans.find(p => p.id === user.plan_id) || plans.find(p => p.name === 'Free');
+    // Fix: Removed 'currentPlan' calculation which depended on the removed 'plans' prop.
+    const avatarUrl = session?.user?.user_metadata?.avatar_url;
     
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = e.target;
@@ -89,16 +92,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
         setUploadError('');
 
         try {
-            // Extract file path from the full URL
-            // e.g., https://.../public/company_logos/user-id/filename.png?t=...
             const urlParts = formData.company_logo_url.split('/company_logos/');
             if (urlParts.length > 1) {
-                const filePath = urlParts[1].split('?')[0]; // Get path and remove query params
+                const filePath = urlParts[1].split('?')[0];
                 const { error } = await supabase.storage.from('company_logos').remove([filePath]);
                 if (error) throw error;
             }
             
-            // Clear the URL from the profile regardless of storage deletion success
             setFormData(prev => ({ ...prev, company_logo_url: null }));
 
         } catch (error: any) {
@@ -124,6 +124,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
                 <Card>
                     <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">User Profile</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {avatarUrl && (
+                            <div className="md:col-span-2 flex items-center space-x-4 mb-4">
+                                <img src={avatarUrl} alt="Your Avatar" className="w-20 h-20 rounded-full border-2 border-primary p-1" />
+                                <div>
+                                    <h3 className="font-semibold text-text-primary">Profile Picture</h3>
+                                    <p className="text-text-secondary text-sm">This is your profile picture from Google.</p>
+                                </div>
+                            </div>
+                        )}
                         <Input label="Full Name" name="name" value={formData.name} onChange={handleInputChange} />
                         <Input label="Email Address" name="email" value={formData.email} onChange={handleInputChange} disabled />
                     </div>
@@ -214,7 +223,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser, 
                         <div className="flex justify-between items-center">
                             <div>
                                 <p className="text-text-secondary">Your current plan:</p>
-                                <p className="text-lg font-bold text-text-primary">{currentPlan?.name || 'Free'}</p>
+                                {/* Fix: Use user.plan_name directly instead of finding from a 'plans' array. */}
+                                <p className="text-lg font-bold text-text-primary">{user.plan_name || 'Free'}</p>
                                 {expiryStatus.text && (
                                     <p className={`text-sm mt-1 ${expiryStatus.className}`}>
                                         {expiryStatus.text}

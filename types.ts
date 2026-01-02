@@ -1,4 +1,4 @@
-// This file is self-contained and does not require auto-generated Supabase types.
+import type { Session } from '@supabase/supabase-js';
 
 export type Json =
   | string
@@ -8,35 +8,6 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-// For Razorpay window object
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
-
-export interface RazorpayOptions {
-  key: string;
-  amount: string; // amount in the smallest currency unit
-  currency: string;
-  name: string;
-  description: string;
-  image?: string;
-  order_id?: string; // for server-side integration
-  handler: (response: { razorpay_payment_id: string; razorpay_order_id?: string; razorpay_signature?: string }) => void;
-  prefill: {
-    name?: string;
-    email?: string;
-    contact?: string;
-  };
-  notes?: {
-    address?: string;
-  };
-  theme?: {
-    color?: string;
-  };
-}
-
 export interface RegionCost {
   id: string;
   item_id: string;
@@ -44,7 +15,7 @@ export interface RegionCost {
   region: string;
   price: number;
   currency: string;
-  valid_from: string; // YYYY-MM-DD
+  valid_from: string;
   created_at?: string;
   user_id?: string;
 }
@@ -130,9 +101,8 @@ export interface Tool {
   created_at?: string;
 }
 
-// Defines a single manufacturing step with its specific parameters
 export interface Operation {
-  id: string; // Unique ID for React keys
+  id: string;
   processName: string;
   parameters: { [key: string]: number };
   toolId?: string;
@@ -144,26 +114,25 @@ export interface Setup {
   id: string;
   name: string;
   operations: Operation[];
-  timePerSetupMin: number; // Setup time specific to this setup
-  toolChangeTimeSec: number; // Tool change time specific to this setup (per tool change in setup)
-  efficiency: number; // Setup efficiency, e.g., 0.95 for 95%
-  machineType?: string; // e.g. 'CNC Mill'
-  machineId?: string; // Links to a Machine from MachineMaster
+  timePerSetupMin: number;
+  toolChangeTimeSec: number;
+  efficiency: number;
+  machineType?: string;
+  machineId?: string;
   description?: string;
 }
 
-// Interface for parameters that define a specific billet shape
 export interface BilletShapeParameters {
-  length?: number; // mm
-  width?: number; // mm
-  height?: number; // mm
-  diameter?: number; // mm
-  outerDiameter?: number; // mm for tubes
-  innerDiameter?: number; // mm for tubes
-  side?: number; // mm for cubes
-  wallThickness?: number; // mm for Rectangle Tube
-  outerWidth?: number; // mm for Rectangle Tube
-  outerHeight?: number; // mm for Rectangle Tube
+  length?: number;
+  width?: number;
+  height?: number;
+  diameter?: number;
+  outerDiameter?: number;
+  innerDiameter?: number;
+  side?: number;
+  wallThickness?: number;
+  outerWidth?: number;
+  outerHeight?: number;
 }
 
 export interface SurfaceTreatment {
@@ -186,9 +155,8 @@ export interface Markups {
 }
 
 export interface MachiningInput {
-  // Metadata
   id: string;
-  original_id?: string; // To track showcase template ID
+  original_id?: string;
   calculationNumber: string;
   partNumber: string;
   partName: string; 
@@ -201,33 +169,22 @@ export interface MachiningInput {
   unitSystem: 'Metric' | 'Imperial';
   region: string;
   currency: string;
-
-  // Material Details
   materialCategory: string;
   materialType: string;
-
-  // Raw Material Geometry & Weight
   rawMaterialProcess: 'Billet' | 'Casting' | 'Forging' | '3D Printing' | 'Other';
   billetShape?: 'Block' | 'Cylinder' | 'Tube' | 'Plate' | 'Bar' | 'Rod' | 'Cube' | 'Rectangle Tube';
   billetShapeParameters?: BilletShapeParameters;
   rawMaterialWeightKg: number;
   finishedPartWeightKg: number;
   partSurfaceAreaM2: number;
-  
-  // Raw Material Cost Buildup
   materialCostPerKg: number; 
   materialDensityGcm3: number; 
   transportCostPerKg: number;
   heatTreatmentCostPerKg: number;
   surfaceTreatments: SurfaceTreatment[];
-
-  // Machining Operations & Setup
   setups: Setup[]; 
-  
-  // Markup
   markups: Markups;
 }
-
 
 export interface MarkupCosts {
   general: number;
@@ -241,30 +198,24 @@ export interface MarkupCosts {
 }
 
 export interface MachiningResult {
-  // Material Analysis
   rawMaterialWeightKg: number;
   finishedPartWeightKg: number;
   totalMaterialCostPerKg: number;
   rawMaterialPartCost: number;
   materialCost: number; 
   surfaceTreatmentCost: number;
-  
-  // Time Analysis
   operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[];
   totalCuttingTimeMin: number;
   totalSetupTimeMin: number; 
   totalToolChangeTimeMin: number; 
   cycleTimePerPartMin: number;
   totalMachineTimeHours: number;
-  
-  // Cost Analysis
   machiningCost: number;
   toolCost: number;
   markupCosts: MarkupCosts;
   totalCost: number;
   costPerPart: number;
 }
-
 
 export interface Calculation {
   id: string;
@@ -273,6 +224,15 @@ export interface Calculation {
   status: 'draft' | 'final';
   user_id: string;
   created_at: string;
+  isShared?: boolean;
+}
+
+export interface CalculationShare {
+    id: string;
+    calculation_id: string;
+    shared_with_email: string;
+    shared_by_user_id: string;
+    created_at: string;
 }
 
 export interface User {
@@ -290,7 +250,8 @@ export interface User {
   country: string | null;
   calcNextNumber: number | null;
   calcPrefix: string | null;
-  plan_id: string | null;
+  plan_name: string | null; 
+  calculation_limit: number; 
   subscription_status: string | null;
   subscription_expires_on: string | null;
   calculations_created_this_period: number;
@@ -300,28 +261,15 @@ export interface User {
   tax_id: string | null;
 }
 
-export interface PriceInfo {
-  price: number;
-  displayPrice?: number;
-}
-
-export interface SubscriptionPlan {
-  id: string;
-  name: string;
-  prices: { [currency: string]: PriceInfo } | {} | null;
-  period: "mo" | "yr" | "";
-  is_custom_price: boolean;
-  calculation_limit: number;
-  features: string[];
-  cta: string;
-  most_popular: boolean;
-  created_at?: string;
+export interface LandingPageProps {
+  onNavigate: (view: View) => void;
+  user: User;
 }
 
 export interface SettingsPageProps {
   user: User;
+  session: Session | null;
   onUpdateUser: (user: Partial<User>) => void;
-  plans: SubscriptionPlan[];
   onNavigate: (view: View) => void;
   isSuperAdmin: boolean;
 }
@@ -356,7 +304,11 @@ export interface ProcessLibraryPageProps {
   onDeleteMultipleProcesses: (processIds: string[]) => void;
 }
 
-// Props for CalculatorPage, includes machines
+export type CalculatorHeaderInfo = {
+  partNumber: string;
+  calculationNumber: string;
+} | null;
+
 export interface CalculatorPageProps {
   materials: MaterialMasterItem[];
   machines: Machine[];
@@ -372,6 +324,11 @@ export interface CalculatorPageProps {
   existingCalculation: Calculation | null;
   theme: 'light' | 'dark';
   onNavigate: (view: View) => void;
+  onHeaderInfoChange: (info: CalculatorHeaderInfo) => void;
+  onAddTool: (tool: Tool) => void;
+  onShare: (calculationId: string, email: string) => Promise<void>;
+  onRevokeShare: (shareId: string) => Promise<void>;
+  onGetShares: (calculationId: string) => Promise<CalculationShare[]>;
 }
 
 export interface DashboardPageProps {
@@ -381,7 +338,6 @@ export interface DashboardPageProps {
   onEdit: (calculation: Calculation) => void;
   onDelete: (calculationId: string) => void;
   onViewResults: (calculation: Calculation) => void;
-  userPlan: SubscriptionPlan | undefined;
   onUpgrade: () => void;
   isSuperAdmin: boolean;
   theme: 'light' | 'dark';
@@ -393,19 +349,14 @@ export interface ResultsPageProps {
   onBack: () => void;
 }
 
-export interface SubscriptionPageProps {
-  plans: SubscriptionPlan[];
+export interface QuoteModalProps {
+  calculation: Calculation;
   user: User;
-  isSuperAdmin: boolean;
-  onUpgradePlan: (planId: string) => void;
-  onBack: () => void;
+  onClose: () => void;
 }
 
 export interface SuperAdminPageProps {
-    plans: SubscriptionPlan[];
-    onAddPlan: (plan: SubscriptionPlan) => void;
-    onUpdatePlan: (plan: SubscriptionPlan) => void;
-    onDeletePlan: (planId: string) => void;
+    onNavigate: (view: View) => void;
 }
 
 export interface SubscriberInfo {
@@ -413,17 +364,25 @@ export interface SubscriberInfo {
   name: string;
   email: string;
   company_name: string | null;
-  plan_name: string | null;
-  subscription_status: string | null;
   calculation_count: number;
   subscribed_on: string;
+  plan_name: string | null;
+  subscription_status: string | null;
   subscription_expires_on: string | null;
 }
 
 export interface UserManagementPageProps {
   subscribers: SubscriberInfo[];
   theme: 'light' | 'dark';
-  plans: SubscriptionPlan[];
+  onUpdateUser: (userId: string, updates: Partial<User>) => Promise<void>;
+  onSendRecovery: (email: string) => Promise<void>;
+  onSendConfirmation: (email: string) => Promise<void>;
+}
+
+export interface UserEditModalProps {
+  user: SubscriberInfo;
+  onSave: (userId: string, updates: Partial<User>) => Promise<void>;
+  onClose: () => void;
 }
 
 export interface ToolLibraryPageProps {
@@ -480,8 +439,8 @@ export interface CostMasterPageProps {
   onAddRegionCost: (cost: Omit<RegionCost, 'id' | 'created_at' | 'user_id'>) => void;
   onUpdateRegionCost: (cost: Pick<RegionCost, 'id' | 'price' | 'valid_from'>) => void;
   onDeleteRegionCost: (costId: string) => void;
-  onAddRegionCurrency: (map: Omit<RegionCurrencyMap, 'id' | 'created_at' | 'user_id'>) => void;
-  onDeleteRegionCurrency: (id: string) => void;
+  onAddRegionCurrency: (map: Omit<RegionCurrencyMap, 'id' | 'created_at' | 'user_id'>) => Promise<void>;
+  onDeleteRegionCurrency: (id: string) => Promise<void>;
 }
 
 export interface ChangeItem {
@@ -498,6 +457,7 @@ export interface ChangelogEntry {
 
 export interface ChangelogPageProps {}
 
+// FIX: Add 'documentation' to View type
 export type View = 
   | 'auth'
   | 'landing'
@@ -509,11 +469,40 @@ export type View =
   | 'processes' 
   | 'settings' 
   | 'superadmin' 
-  | 'subscription' 
+  | 'subscription'
   | 'toolLibrary' 
   | 'subscribersList'
   | 'costMaster'
   | 'feedback'
   | 'feedbackList'
   | 'changelog'
-  | 'resetPassword';
+  | 'resetPassword'
+  | 'oauthConsent'
+  | 'documentation';
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  calculation_limit: number;
+  prices: { [currency: string]: { price: number } };
+  period: string;
+  is_custom_price: boolean;
+  features: string[];
+  cta: string;
+  most_popular: boolean;
+}
+// FIX: Add missing DocumentationSection and DocumentationPageProps types
+export interface DocumentationSection {
+  id: string;
+  step: number;
+  title: string;
+  content: string;
+  image_url: string | null;
+  image_caption: string;
+}
+
+export interface DocumentationPageProps {
+  content: DocumentationSection[];
+  onUpdate: (section: DocumentationSection) => void;
+  isSuperAdmin: boolean;
+}

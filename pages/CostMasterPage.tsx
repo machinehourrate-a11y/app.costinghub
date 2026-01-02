@@ -122,8 +122,12 @@ const RegionCurrencyTab: React.FC<Pick<CostMasterPageProps, 'regionCurrencyMap' 
             return;
         }
 
-        if (regionCurrencyMap.some(rcm => rcm.region.toLowerCase() === trimmedRegion.toLowerCase())) {
-            setError(`The region "${trimmedRegion}" already exists in your active mappings.`);
+        const existingCustomMapping = regionCurrencyMap.find(
+            rcm => rcm.user_id === user.id && rcm.region.toLowerCase() === trimmedRegion.toLowerCase()
+        );
+
+        if (existingCustomMapping) {
+            setError(`You have already added "${trimmedRegion}" as a custom region.`);
             return;
         }
 
@@ -161,7 +165,7 @@ const RegionCurrencyTab: React.FC<Pick<CostMasterPageProps, 'regionCurrencyMap' 
             <Card className="mb-8">
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <h4 className="text-md font-semibold text-text-secondary">Add New Mapping</h4>
-                    <p className="text-sm text-text-muted">Enter a custom region name. If it's a known country, the currency will be suggested automatically.</p>
+                    <p className="text-sm text-text-muted">Enter a custom region name. If it's a known country, the currency will be suggested automatically. You can create a custom mapping for a default region (like India) to override its currency for your account.</p>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                         <Input
                             label="Region Name"
@@ -203,7 +207,11 @@ const RegionCurrencyTab: React.FC<Pick<CostMasterPageProps, 'regionCurrencyMap' 
                          <tbody className="bg-surface divide-y divide-border">
                             {[...regionCurrencyMap].sort((a,b) => a.region.localeCompare(b.region)).map(rcm => {
                                 const isCustom = !!rcm.user_id;
-                                const canDelete = rcm.region !== 'Default' && (isCustom ? (isSuperAdmin || rcm.user_id === user.id) : isSuperAdmin);
+                                const isOwner = isCustom && rcm.user_id === user.id;
+                                // A mapping can be deleted if it is a custom mapping...
+                                // ...and the current user is either the owner or a super admin.
+                                // This prevents deletion of global default mappings.
+                                const canDelete = isCustom && (isOwner || isSuperAdmin);
                                 return (
                                 <tr key={rcm.id}>
                                     <td className="px-6 py-4 font-semibold text-text-primary">

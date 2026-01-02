@@ -26,15 +26,11 @@ export const MultiProcessModal: React.FC<MultiProcessModalProps> = ({ onSave, on
     setSelectedIndices([]);
     try {
       const result = await suggestMultipleProcesses(prompt);
-      if (result) {
-        setSuggestions(result);
-        setSelectedIndices(result.map((_, index) => index));
-      } else {
-        setError('Could not generate suggestions. Please try a different prompt.');
-      }
+      setSuggestions(result);
+      setSelectedIndices(result.map((_, index) => index));
     } catch (err) {
       console.error('Gemini suggestion failed:', err);
-      setError('An error occurred while getting suggestions. Please check the console.');
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
     } finally {
       setIsGenerating(false);
     }

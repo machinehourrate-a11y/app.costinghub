@@ -111,19 +111,15 @@ export const MaterialModal: React.FC<MaterialModalProps> = ({ material, onSave, 
     setSuggestionError('');
     try {
         const suggestion = await suggestMaterial(suggestionPrompt);
-        if (suggestion) {
-            setFormData({
-                name: suggestion.name,
-                category: suggestion.category,
-                subCategory: suggestion.subCategory || '',
-                properties: suggestion.properties
-            });
-        } else {
-            setSuggestionError('Could not generate a suggestion. Please try a different prompt.');
-        }
+        setFormData({
+            name: suggestion.name,
+            category: suggestion.category,
+            subCategory: suggestion.subCategory || '',
+            properties: suggestion.properties
+        });
     } catch (error) {
         console.error('Gemini suggestion failed:', error);
-        setSuggestionError('An error occurred while getting suggestions. Please check the console.');
+        setSuggestionError(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
         setIsSuggesting(false);
     }

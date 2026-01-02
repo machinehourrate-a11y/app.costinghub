@@ -1,38 +1,90 @@
+
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    
+    <!-- SEO Optimization -->
     <title>CostingHub - Manufacturing Cost & Cycle Time Calculator</title>
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <meta name="description" content="All Costs. One Hub. The ultimate platform for production teams to calculate machining costs, estimate cycle times, manage material libraries, and generate professional quotes. Optimize your manufacturing quoting process today." />
+    <meta name="keywords" content="manufacturing cost calculator, machining estimator, CNC cycle time, machine shop software, quoting software, engineering cost analysis, material library, process planning" />
+    <meta name="author" content="CostingHub Inc." />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://costinghub.com/" />
+    <meta property="og:title" content="CostingHub - Manufacturing Cost & Cycle Time Calculator" />
+    <meta property="og:description" content="Streamline your manufacturing estimates with CostingHub. Calculate costs, manage libraries, and generate quotes in one place." />
+    <meta property="og:image" content="https://i.ibb.co/L5B703Q/face-milling.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://costinghub.com/" />
+    <meta property="twitter:title" content="CostingHub - Manufacturing Cost & Cycle Time Calculator" />
+    <meta property="twitter:description" content="Streamline your manufacturing estimates with CostingHub. Calculate costs, manage libraries, and generate quotes in one place." />
+    <meta property="twitter:image" content="https://i.ibb.co/L5B703Q/face-milling.png" />
+
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+
+    <!-- Contentsquare tracking code -->
+    <script src="https://t.contentsquare.net/uxa/7a8e5154d485f.js"></script>
+
+    <!-- Mixpanel tracking code -->
+    <script type="text/javascript">
+      (function (f, b) { if (!b.__SV) { var e, g, i, h; window.mixpanel = b; b._i = []; b.init = function (e, f, c) { function g(a, d) { var b = d.split("."); 2 == b.length && ((a = a[b[0]]), (d = b[1])); a[d] = function () { a.push([d].concat(Array.prototype.slice.call(arguments, 0))); }; } var a = b; "undefined" !== typeof c ? (a = b[c] = []) : (c = "mixpanel"); a.people = a.people || []; a.toString = function (a) { var d = "mixpanel"; "mixpanel" !== c && (d += "." + c); a || (d += " (stub)"); return d; }; a.people.toString = function () { return a.toString(1) + ".people (stub)"; }; i = "disable time_event track track_pageview track_links track_forms track_with_groups add_group set_group remove_group register register_once alias unregister identify name_tag set_config reset opt_in_tracking opt_out_tracking has_opted_in_tracking has_opted_out_tracking clear_opt_in_out_tracking start_batch_senders people.set people.set_once people.unset people.increment people.append people.union people.track_charge people.clear_charges people.delete_user people.remove".split( " "); for (h = 0; h < i.length; h++) g(a, i[h]); var j = "set set_once union unset remove delete".split(" "); a.get_group = function () { function b(c) { d[c] = function () { call2_args = arguments; call2 = [c].concat(Array.prototype.slice.call(call2_args, 0)); a.push([e, call2]); }; } for ( var d = {}, e = ["get_group"].concat( Array.prototype.slice.call(arguments, 0)), c = 0; c < j.length; c++) b(j[c]); return d; }; b._i.push([e, f, c]); }; b.__SV = 1.2; e = f.createElement("script"); e.type = "text/javascript"; e.async = !0; e.src = "undefined" !== typeof MIXPANEL_CUSTOM_LIB_URL ? MIXPANEL_CUSTOM_LIB_URL : "file:" === f.location.protocol && "//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js".match(/^\/\//) ? "https://cdn.mxpnl.com/libs/mixpanel-2-latest.min.js" : "//cdn.mxpnl.com/libs/mixpanel-2-latest.min.js"; g = f.getElementsByTagName("script")[0]; g.parentNode.insertBefore(e, g); } })(document, window.mixpanel || []);
+   
+      // Create an instance of the Mixpanel object
+      mixpanel.init("5b39b3ca903b9b34897c0b87ed7ff85a", {
+          autocapture: true,
+          track_pageview: true,
+          record_sessions_percent: 100, //records 100% of all sessions
+          record_heatmap_data: true,
+      });
+    </script>
+
+    <!-- Heap Analytics code -->
+    <script type="text/javascript">
+      window.heapReadyCb=window.heapReadyCb||[],window.heap=window.heap||[],heap.load=function(e,t){window.heap.envId=e,window.heap.clientConfig=t=t||{},window.heap.clientConfig.shouldFetchServerConfig=!1;var a=document.createElement("script");a.type="text/javascript",a.async=!0,a.src="https://cdn.us.heap-api.com/config/"+e+"/heap_config.js";var r=document.getElementsByTagName("script")[0];r.parentNode.insertBefore(a,r);var n=["init","startTracking","stopTracking","track","resetIdentity","identify","getSessionId","getUserId","getIdentity","addUserProperties","addEventProperties","removeEventProperty","clearEventProperties","addAccountProperties","addAdapter","addTransformer","addTransformerFn","onReady","addPageviewProperties","removePageviewProperty","clearPageviewProperties","trackPageview"],i=function(e){return function(){var t=Array.prototype.slice.call(arguments,0);window.heapReadyCb.push({name:e,fn:function(){heap[e]&&heap[e].apply(heap,t)}})}};for(var p=0;p<n.length;p++)heap[n[p]]=i(n[p])};
+      heap.load("1438512015");
+    </script>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
       :root {
-        --color-primary: #8b5cf6; /* Violet */
+        --color-primary: #8b5cf6; 
         --color-primary-hover: #7c3aed;
         --color-primary-rgb: 139, 92, 246;
-        --color-secondary-accent: #ec4899; /* Pink */
-        --color-background: #0D0D0D; /* Near Black */
-        --color-surface: #1A1A1A;    /* Dark Gray */
-        --color-text-primary: #FFFFFF; /* White */
-        --color-text-secondary: #A0A0A0; /* Light Gray */
-        --color-text-muted: #6B7280;   /* Medium Gray */
-        --color-border: #2D2D2D;     /* Dark Border */
+        --color-secondary-accent: #ec4899;
+        --color-background: #111827; /* Darker Blue-Gray */
+        --color-surface: #1f2937;    /* Blue-Gray */
+        --color-text-primary: #f9fafb; /* Off-White */
+        --color-text-secondary: #9ca3af; /* Lighter Gray */
+        --color-text-muted: #6b7280;   
+        --color-border: #374151;     /* Lighter Border */
         --color-text-input: var(--color-primary);
       }
       [data-theme="light"] {
-        --color-primary: #8b5cf6; /* Violet */
+        --color-primary: #8b5cf6;
         --color-primary-hover: #7c3aed;
         --color-primary-rgb: 139, 92, 246;
-        --color-secondary-accent: #ec4899; /* Pink */
-        --color-background: #F9FAFB; /* Very Light Gray */
-        --color-surface: #FFFFFF;    /* White */
-        --color-text-primary: #1F2937; /* Dark Gray / Black */
-        --color-text-secondary: #6B7280; /* Medium Gray */
-        --color-text-muted: #9CA3AF;   /* Light Gray */
-        --color-border: #E5E7EB;     /* Light Border */
-        --color-text-input: #000000; /* Black */
+        --color-secondary-accent: #ec4899;
+        --color-background: #f9fafb; 
+        --color-surface: #ffffff;    
+        --color-text-primary: #1f2937; 
+        --color-text-secondary: #4b5563; /* Darker Gray for better contrast */
+        --color-text-muted: #9ca3af;   
+        --color-border: #e5e7eb;     
+        --color-text-input: #111827; /* Near black */
+      }
+      *, ::before, ::after {
+          transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, -webkit-backdrop-filter;
+          transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+          transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, -webkit-backdrop-filter;
+          transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+          transition-duration: 150ms;
       }
       body {
         background-color: var(--color-background);
@@ -48,6 +100,69 @@
         background-color: var(--color-surface);
         color: var(--color-text-primary);
       }
+
+      @media print {
+        @page {
+          size: A4;
+          margin: 1cm;
+        }
+        body {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        body * {
+          visibility: hidden;
+        }
+        #quote-modal-content, #quote-modal-content * {
+          visibility: visible;
+        }
+        #quote-modal-content {
+          position: absolute;
+          left: 0;
+          top: 0;
+          width: 100%;
+          min-height: 100vh;
+          margin: 0;
+          padding: 20px;
+          border: none;
+          box-shadow: none;
+          color: black !important;
+          background-color: white !important;
+          overflow: visible !important;
+          height: auto !important;
+        }
+        #quote-modal-content .printable-text-primary { color: #1F2937 !important; }
+        #quote-modal-content .printable-text-secondary { color: #4B5563 !important; }
+        #quote-modal-content .printable-bg-surface { background-color: #FFFFFF !important; }
+        #quote-modal-content .printable-border { border-color: #E5E7EB !important; }
+        
+        /* Ensure text-primary colors (purple) print correctly */
+        .text-primary { color: #8b5cf6 !important; }
+
+        .no-print {
+            display: none !important;
+        }
+      }
+      
+      /* Animation Keyframes */
+      @keyframes fadeInUp {
+        from {
+          opacity: 0;
+          transform: translate3d(0, 20px, 0);
+        }
+        to {
+          opacity: 1;
+          transform: translate3d(0, 0, 0);
+        }
+      }
+      
+      .animate-fade-in-up {
+        animation: fadeInUp 0.6s ease-out forwards;
+      }
+      
+      .delay-100 { animation-delay: 100ms; }
+      .delay-200 { animation-delay: 200ms; }
+      .delay-300 { animation-delay: 300ms; }
     </style>
     <script>
       tailwind.config = {
@@ -97,10 +212,16 @@
     "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.43.4",
     "@google/genai": "https://esm.sh/@google/genai@0.12.0",
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/"
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@react-three/fiber": "https://aistudiocdn.com/@react-three/fiber@^9.4.2",
+    "@react-three/drei": "https://aistudiocdn.com/@react-three/drei@^10.7.7",
+    "@netlify/functions": "https://esm.sh/@netlify/functions@^5.1.2",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "vite": "https://esm.sh/vite@^7.3.0"
   }
 }
 </script>
+<link rel="stylesheet" href="/index.css">
 </head>
   <body class="bg-background text-text-primary antialiased">
     <div id="root"></div>

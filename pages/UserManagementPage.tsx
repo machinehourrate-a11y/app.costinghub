@@ -1,36 +1,38 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import { Chart as ChartJS, Title, Tooltip, Legend, ArcElement } from 'chart.js';
-import type { SubscriberInfo, UserManagementPageProps, SubscriptionPlan } from '../types';
+import type { SubscriberInfo, UserManagementPageProps, User } from '../types';
 import { Card } from '../components/ui/Card';
 import { SUPER_ADMIN_EMAILS } from '../constants';
+import { Button } from '../components/ui/Button';
+import { UserEditModal } from '../components/UserEditModal';
 
 ChartJS.register(Title, Tooltip, Legend, ArcElement);
 
 type SortKey = keyof SubscriberInfo | null;
 type SortDirection = 'ascending' | 'descending';
+type Notification = { message: string; type: 'success' | 'error' } | null;
 
-const getRowClass = (user: SubscriberInfo, plans: SubscriptionPlan[]): string => {
-    if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+// Fix: Removed plans from getRowClass parameters as plan information is now on SubscriberInfo
+const getRowClass = (user: SubscriberInfo): string => {
+    if (SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) {
         return 'hover:bg-background/60';
     }
 
+    if (user.subscription_status === 'banned') {
+        return 'bg-red-800/20 hover:bg-red-800/30 line-through text-text-muted';
+    }
+    if (user.subscription_status !== 'active') {
+        return 'bg-gray-500/10 hover:bg-gray-500/20 text-text-muted';
+    }
+
     let dateString = user.subscription_expires_on;
-    if (!dateString) {
-        const userPlan = plans.find(p => p.name === user.plan_name);
-        let expires: Date | null = null;
-        if (userPlan) {
-            if (userPlan.name === 'Free' || userPlan.period === '') {
-                const creationDate = new Date(user.subscribed_on);
-                creationDate.setFullYear(creationDate.getFullYear() + 1);
-                expires = creationDate;
-            } else if (userPlan.period === 'mo') {
-                const oneMonthFromNow = new Date(); oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1); expires = oneMonthFromNow;
-            } else if (userPlan.period === 'yr') {
-                const oneYearFromNow = new Date(); oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1); expires = oneYearFromNow;
-            }
-        }
-        if (expires) dateString = expires.toISOString();
+    // Fix: Using plan_name directly from SubscriberInfo
+    if (!dateString && user.plan_name === 'Free') {
+        const created = new Date(user.subscribed_on);
+        created.setFullYear(created.getFullYear() + 1);
+        dateString = created.toISOString();
     }
 
     if (!dateString) {
@@ -51,8 +53,48 @@ const getRowClass = (user: SubscriberInfo, plans: SubscriptionPlan[]): string =>
     return 'hover:bg-background/60';
 };
 
-export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscribers, theme, plans }) => {
+// Fix: Removed plans from UserManagementPageProps as it is no longer passed from App.tsx
+export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscribers, theme, onUpdateUser, onSendRecovery, onSendConfirmation }) => {
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection } | null>({ key: 'subscribed_on', direction: 'descending' });
+    const [userToEdit, setUserToEdit] = useState<SubscriberInfo | null>(null);
+    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const [notification, setNotification] = useState<Notification>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+        setNotification({ message, type });
+        setTimeout(() => setNotification(null), 5000);
+    };
+
+    const handleAction = async (action: (email: string) => Promise<void>, email: string, successMessage: string) => {
+        try {
+            await action(email);
+            showNotification(successMessage, 'success');
+        } catch (error: any) {
+            showNotification(`Error: ${error.message}`, 'error');
+        }
+        setActiveDropdown(null);
+    };
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setActiveDropdown(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleEditUser = (user: SubscriberInfo) => {
+        setUserToEdit(user);
+    };
+
+    const handleSaveUser = async (userId: string, updates: Partial<User>) => {
+        await onUpdateUser(userId, updates);
+        showNotification('User updated successfully!', 'success');
+        setUserToEdit(null);
+    };
 
     const sortedSubscribers = useMemo(() => {
         let sortableItems = [...subscribers];
@@ -96,10 +138,14 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
             return acc;
         }, {} as Record<string, number>);
 
-        const userStatus = { active: 0, expired: 0, inactive: 0 };
+        const userStatus = { active: 0, expired: 0, inactive: 0, banned: 0 };
         subscribers.forEach(user => {
-            if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+            if (SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) {
                 userStatus.active++;
+                return;
+            }
+            if (user.subscription_status === 'banned') {
+                userStatus.banned++;
                 return;
             }
             if (user.subscription_status !== 'active') {
@@ -107,13 +153,11 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
                 return;
             }
             let dateString = user.subscription_expires_on;
-            if (!dateString) {
-                const userPlan = plans.find(p => p.name === user.plan_name);
-                if (userPlan?.name === 'Free') {
-                    const created = new Date(user.subscribed_on);
-                    created.setFullYear(created.getFullYear() + 1);
-                    dateString = created.toISOString();
-                }
+            // Fix: Using plan_name directly from SubscriberInfo
+            if (!dateString && user.plan_name === 'Free') {
+                const created = new Date(user.subscribed_on);
+                created.setFullYear(created.getFullYear() + 1);
+                dateString = created.toISOString();
             }
 
             if (!dateString) {
@@ -129,7 +173,7 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
         });
 
         return { totalUsers, totalCalculations, planDistribution, userStatus };
-    }, [subscribers, plans]);
+    }, [subscribers]);
 
     const planDoughnutData = useMemo(() => ({
         labels: Object.keys(analytics.planDistribution),
@@ -147,15 +191,16 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
     }), [analytics.planDistribution]);
     
     const statusDoughnutData = useMemo(() => ({
-        labels: ['Active', 'Expired', 'Inactive'],
+        labels: ['Active', 'Expired', 'Inactive', 'Banned'],
         datasets: [{
-            data: [analytics.userStatus.active, analytics.userStatus.expired, analytics.userStatus.inactive],
+            data: [analytics.userStatus.active, analytics.userStatus.expired, analytics.userStatus.inactive, analytics.userStatus.banned],
             backgroundColor: [
                 'rgba(16, 185, 129, 0.7)',  // Green
-                'rgba(239, 68, 68, 0.7)',   // Red
+                'rgba(245, 158, 11, 0.7)',   // Yellow
                 'rgba(107, 114, 128, 0.7)', // Gray
+                'rgba(239, 68, 68, 0.7)',   // Red
             ],
-            borderColor: ['#10B981', '#EF4444', '#6B7280'],
+            borderColor: ['#10B981', '#F59E0B', '#6B7280', '#EF4444'],
             borderWidth: 1,
         }],
     }), [analytics.userStatus]);
@@ -176,34 +221,17 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
     }, [theme]);
 
     const renderExpiryDate = (user: SubscriberInfo) => {
-        if (SUPER_ADMIN_EMAILS.includes(user.email)) {
+        if (SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase())) {
             return <span className="text-text-muted">Not Applicable</span>;
         }
 
         let dateString = user.subscription_expires_on;
         
-        if (!dateString) {
-            const userPlan = plans.find(p => p.name === user.plan_name);
-            let expires: Date | null = null;
-
-            if (userPlan) {
-                if (userPlan.name === 'Free' || userPlan.period === '') {
-                    const creationDate = new Date(user.subscribed_on);
-                    creationDate.setFullYear(creationDate.getFullYear() + 1);
-                    expires = creationDate;
-                } else if (userPlan.period === 'mo') {
-                    const oneMonthFromNow = new Date();
-                    oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
-                    expires = oneMonthFromNow;
-                } else if (userPlan.period === 'yr') {
-                    const oneYearFromNow = new Date();
-                    oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
-                    expires = oneYearFromNow;
-                }
-            }
-            if (expires) {
-                dateString = expires.toISOString();
-            }
+        // Fix: Using plan_name directly from SubscriberInfo
+        if (!dateString && user.plan_name === 'Free') {
+            const created = new Date(user.subscribed_on);
+            created.setFullYear(created.getFullYear() + 1);
+            dateString = created.toISOString();
         }
 
         if (!dateString) {
@@ -228,6 +256,18 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
 
   return (
     <div className="w-full mx-auto space-y-8 animate-fade-in">
+        {notification && (
+            <div className={`fixed top-20 right-8 z-50 p-4 rounded-lg shadow-lg animate-fade-in text-white ${notification.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+                {notification.message}
+            </div>
+        )}
+        {userToEdit && (
+            <UserEditModal 
+                user={userToEdit}
+                onClose={() => setUserToEdit(null)}
+                onSave={handleSaveUser}
+            />
+        )}
         {/* Analytics Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card className="flex flex-col justify-center text-center">
@@ -268,7 +308,6 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer" onClick={() => requestSort('name')}>
                     User{getSortIndicator('name')}
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Company Name</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer" onClick={() => requestSort('plan_name')}>
                     Subscription Plan{getSortIndicator('plan_name')}
                 </th>
@@ -281,29 +320,61 @@ export const UserManagementPage: React.FC<UserManagementPageProps> = ({ subscrib
                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider cursor-pointer" onClick={() => requestSort('subscription_expires_on')}>
                     Expires On{getSortIndicator('subscription_expires_on')}
                 </th>
+                <th scope="col" className="relative px-6 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="bg-surface divide-y divide-border">
               {sortedSubscribers.map((user) => (
-                <tr key={user.id} className={getRowClass(user, plans)}>
+                <tr key={user.id} className={getRowClass(user)}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-medium text-text-primary">{user.name}</div>
                     <div className="text-sm text-text-secondary">{user.email}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{user.company_name || 'N/A'}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        user.subscription_status === 'active' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {user.plan_name || 'Free'}
-                      </span>
+                     <div className="flex items-center gap-2">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.plan_name === 'Professional' ? 'bg-blue-100 text-blue-800' :
+                            user.plan_name === 'Enterprise' ? 'bg-purple-100 text-purple-800' :
+                            'bg-gray-100 text-gray-800'
+                        }`}>
+                            {user.plan_name || 'Free'}
+                        </span>
+                        {user.subscription_status && user.subscription_status !== 'active' && (
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full capitalize ${
+                                user.subscription_status === 'banned' ? 'bg-red-200 text-red-800' :
+                                user.subscription_status === 'expired' ? 'bg-yellow-200 text-yellow-800' :
+                                'bg-gray-200 text-gray-800'
+                            }`}>
+                                {user.subscription_status}
+                            </span>
+                        )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary text-center">{user.calculation_count || 0}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary">{user.subscribed_on ? new Date(user.subscribed_on).toLocaleDateString() : 'N/A'}</td>
                    <td className="px-6 py-4 whitespace-nowrap text-sm">
                         {renderExpiryDate(user)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        {!SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()) && (
+                            <div className="flex items-center justify-end space-x-2">
+                                <Button variant="secondary" onClick={() => handleEditUser(user)}>Edit</Button>
+                                <div className="relative" ref={dropdownRef}>
+                                    <Button variant="secondary" onClick={() => setActiveDropdown(activeDropdown === user.id ? null : user.id)}>
+                                        Actions
+                                        <svg className="w-4 h-4 ml-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                    </Button>
+                                    {activeDropdown === user.id && (
+                                        <div className="absolute right-0 mt-2 w-56 origin-top-right bg-surface rounded-md shadow-lg ring-1 ring-border ring-opacity-5 focus:outline-none z-10 animate-fade-in">
+                                            <div className="py-1">
+                                                <button onClick={() => handleAction(onSendRecovery, user.email, `Password recovery sent to ${user.email}`)} className="w-full text-left block px-4 py-2 text-sm text-text-primary hover:bg-background/60">Send Recovery Email</button>
+                                                <button onClick={() => handleAction(onSendConfirmation, user.email, `Confirmation resent to ${user.email}`)} className="w-full text-left block px-4 py-2 text-sm text-text-primary hover:bg-background/60">Resend Confirmation</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </td>
                 </tr>
               ))}

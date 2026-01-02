@@ -60,14 +60,10 @@ export const MachineModal: React.FC<MachineModalProps> = ({ machine, onSave, onC
     setSuggestionError('');
     try {
         const suggestion = await suggestMachine(suggestionPrompt);
-        if (suggestion) {
-            setFormData(prev => ({ ...prev, ...suggestion }));
-        } else {
-            setSuggestionError('Could not generate a suggestion. Please try a different prompt.');
-        }
+        setFormData(prev => ({ ...prev, ...suggestion }));
     } catch (error) {
         console.error('Gemini suggestion failed:', error);
-        setSuggestionError('An error occurred while getting suggestions.');
+        setSuggestionError(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
         setIsSuggesting(false);
     }

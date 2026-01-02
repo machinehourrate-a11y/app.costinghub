@@ -80,14 +80,10 @@ export const ProcessModal: React.FC<ProcessModalProps> = ({ process, onSave, onC
     setSuggestionError('');
     try {
         const suggestion = await suggestProcess(suggestionPrompt);
-        if (suggestion) {
-            setFormData(suggestion as Omit<Process, 'id'>);
-        } else {
-            setSuggestionError('Could not generate a suggestion. Please try a different prompt.');
-        }
+        setFormData(suggestion as Omit<Process, 'id'>);
     } catch (error) {
         console.error('Gemini suggestion failed:', error);
-        setSuggestionError('An error occurred while getting suggestions.');
+        setSuggestionError(error instanceof Error ? error.message : 'An unknown error occurred.');
     } finally {
         setIsSuggesting(false);
     }

@@ -1,3 +1,4 @@
+
 import type { MachiningInput, MachiningResult, Operation, Machine, Setup, BilletShapeParameters, Process, Tool, MarkupCosts, RegionCost, MaterialProperty } from '../types';
 import { CURRENCY_CONVERSION_RATES_TO_USD } from '../constants';
 
@@ -7,12 +8,10 @@ const getConvertedPrice = (
   region: string,
   regionCosts: RegionCost[],
   fallbackPrice: number,
-  // The fallback price from the library is assumed to be in USD
   targetCurrency: string 
 ): number => {
   const now = new Date();
 
-  // Helper to find the latest valid RegionCost object for a given region
   const getRegionCost = (targetRegion: string): RegionCost | null => {
     const regionSpecificCosts = regionCosts
       .filter(rc => 
@@ -26,13 +25,11 @@ const getConvertedPrice = (
     return regionSpecificCosts.length > 0 ? regionSpecificCosts[0] : null;
   };
 
-  // Find the cost entry, with fallback to 'Default'
   const costEntry = getRegionCost(region) ?? (region !== 'Default' ? getRegionCost('Default') : null);
 
   const price = costEntry ? costEntry.price : fallbackPrice;
-  const fromCurrency = costEntry ? costEntry.currency : 'USD'; // Assume fallback is USD
+  const fromCurrency = costEntry ? costEntry.currency : 'USD';
 
-  // Conversion logic
   const fromRate = CURRENCY_CONVERSION_RATES_TO_USD[fromCurrency] || 1;
   const toRate = CURRENCY_CONVERSION_RATES_TO_USD[targetCurrency] || 1;
 
@@ -40,7 +37,6 @@ const getConvertedPrice = (
     return price;
   }
   
-  // Convert price to USD first, then to target currency
   const priceInUsd = price * fromRate;
   const convertedPrice = priceInUsd / toRate;
   
@@ -58,7 +54,7 @@ export const calculateBilletWeight = (
   }
 
   let volumeCm3 = 0;
-  const toCm = (val?: number) => (val || 0) / 10; // Convert mm to cm
+  const toCm = (val?: number) => (val || 0) / 10;
 
   try {
     switch (shape) {
@@ -130,91 +126,98 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
 
   const executionParams: { [key: string]: number } = { ...operation.parameters };
 
-  // 1. Initialize calculated values
   let spindleSpeed = 0;
   let feedRate = 0;
 
-  // 2. Get tool properties, allowing overrides from operation.parameters
+  const manualRpm = operation.parameters.manualSpindleSpeed;
+  const manualFeed = operation.parameters.manualFeedRate;
+
   const cuttingSpeed = operation.parameters.cuttingSpeed ?? tool?.cuttingSpeedVc ?? 0;
   const toolDiameter = tool?.diameter ?? 0;
   
-  // Also get raw tool properties for complex formulas
   const cuttingSpeedVc = tool?.cuttingSpeedVc ?? 0;
   const feedPerTooth_raw = tool?.feedPerTooth ?? 0;
   const numberOfTeeth_raw = tool?.numberOfTeeth ?? 0;
   
-  // 3. Differentiate between process groups for accurate speed/feed calculations
+  if (manualRpm && manualRpm > 0) {
+      spindleSpeed = manualRpm;
+  }
+
   if (process.group === 'Turning') {
-    // --- TURNING LOGIC ---
-    // For lathe tools, 'feedPerTooth' from the tool library is used to store feedPerRev.
-    // We prioritize the operation-specific override 'feedPerRev'.
     const feedPerRev = operation.parameters.feedPerRev ?? tool?.feedPerTooth ?? 0;
     
-    // For turning, RPM is based on workpiece diameter, not tool diameter (except for drilling)
-    const workpieceDiameter = 
-      process.name === 'Drilling (on Lathe)' ? toolDiameter :
-      (operation.parameters.diameterStart ?? operation.parameters.facingDiameter ?? operation.parameters.partingDiameter ?? toolDiameter);
+    if (spindleSpeed === 0) {
+        const workpieceDiameter = 
+          process.name === 'Drilling (on Lathe)' ? toolDiameter :
+          (operation.parameters.diameterStart ?? operation.parameters.facingDiameter ?? operation.parameters.partingDiameter ?? toolDiameter);
 
-    if (workpieceDiameter > 0 && cuttingSpeed > 0) {
-      spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * workpieceDiameter);
+        if (workpieceDiameter > 0 && cuttingSpeed > 0) {
+          spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * workpieceDiameter);
+        }
     }
-    if (spindleSpeed > 0 && feedPerRev > 0) {
-      feedRate = spindleSpeed * feedPerRev;
+
+    if (manualFeed && manualFeed > 0) {
+        feedRate = manualFeed;
+    } else {
+        if (spindleSpeed > 0 && feedPerRev > 0) {
+          feedRate = spindleSpeed * feedPerRev;
+        }
     }
     
-    // Add calculated values to execution context for the formula
     executionParams.feedPerRev = feedPerRev;
 
   } else if (process.group === 'Sawing') {
-    // --- SAWING LOGIC ---
     const feedPerTooth = operation.parameters.feedPerTooth ?? tool?.feedPerTooth ?? 0;
 
-    if (process.name === 'Band Saw Cut-Off') {
-        const bladeTPI = operation.parameters.bladeTPI ?? 0;
-        if (feedPerTooth > 0 && bladeTPI > 0 && cuttingSpeed > 0) {
-            // Formula from user spec: vf = ft * (TPI * 25.4) * Nb
-            feedRate = feedPerTooth * (bladeTPI * 25.4) * cuttingSpeed;
+    if (manualFeed && manualFeed > 0) {
+        feedRate = manualFeed;
+    } else {
+        if (process.name === 'Band Saw Cut-Off') {
+            const bladeTPI = operation.parameters.bladeTPI ?? 0;
+            if (feedPerTooth > 0 && bladeTPI > 0 && cuttingSpeed > 0) {
+                feedRate = feedPerTooth * (bladeTPI * 25.4) * cuttingSpeed;
+            }
+        } else if (process.name === 'Circular Saw Cut-Off') {
+            const numberOfTeeth = operation.parameters.numberOfTeeth ?? tool?.numberOfTeeth ?? 1;
+            if (spindleSpeed === 0 && toolDiameter > 0 && cuttingSpeed > 0) {
+                spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
+            }
+            if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
+                feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
+            }
+        } else if (process.name === 'Abrasive Cut-Off') {
+            feedRate = operation.parameters.feedRate ?? 0;
         }
-    } else if (process.name === 'Circular Saw Cut-Off') {
-        const numberOfTeeth = operation.parameters.numberOfTeeth ?? tool?.numberOfTeeth ?? 1;
-        if (toolDiameter > 0 && cuttingSpeed > 0) {
-            spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
-        }
-        if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
-            feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
-        }
-    } else if (process.name === 'Abrasive Cut-Off') {
-        // Feed rate is a direct input for this process
-        feedRate = operation.parameters.feedRate ?? 0;
     }
   } else {
-    // --- MILLING/OTHER LOGIC ---
-    // Prioritize the operation-specific override 'feedPerTooth'.
     const feedPerTooth = operation.parameters.feedPerTooth ?? tool?.feedPerTooth ?? 0;
     const numberOfTeeth = tool?.numberOfTeeth ?? 1;
 
-    if (toolDiameter > 0 && cuttingSpeed > 0) {
-      spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
+    if (spindleSpeed === 0) {
+        if (toolDiameter > 0 && cuttingSpeed > 0) {
+          spindleSpeed = (cuttingSpeed * 1000) / (Math.PI * toolDiameter);
+        }
     }
-    if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
-      feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
+
+    if (manualFeed && manualFeed > 0) {
+        feedRate = manualFeed;
+    } else {
+        if (spindleSpeed > 0 && feedPerTooth > 0 && numberOfTeeth > 0) {
+          feedRate = spindleSpeed * feedPerTooth * numberOfTeeth;
+        }
     }
     
-    // Add values to execution context
     executionParams.feedPerTooth = feedPerTooth;
     executionParams.numberOfTeeth = numberOfTeeth;
   }
 
-  // Make common calculated and tool values available to all formulas
   executionParams.spindleSpeed = spindleSpeed;
-  executionParams.feedRate = feedRate || 1; // Fallback to 1 to avoid division by zero
+  executionParams.feedRate = feedRate || 1; 
   executionParams.toolDiameter = toolDiameter;
-  // Pass raw tool data for complex formulas
   executionParams.cuttingSpeedVc = cuttingSpeedVc;
   executionParams.feedPerTooth = feedPerTooth_raw; 
   executionParams.numberOfTeeth = numberOfTeeth_raw;
 
-  // Ensure all defined parameters for the process are present in the execution context
   if (Array.isArray(process.parameters)) {
       (process.parameters as any[]).forEach(p => {
           if (p.name && executionParams[p.name] === undefined) {
@@ -227,11 +230,9 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
   const paramValues = allParamNames.map(name => executionParams[name]);
   
   try {
-    // Create a function with all available parameters in its scope
     const formulaFn = new Function(...allParamNames, 'Math', `return ${process.formula}`);
     const result = formulaFn(...paramValues, Math);
     
-    // Check for invalid results (NaN, Infinity, negative time)
     if (typeof result !== 'number' || !isFinite(result) || result < 0) {
       console.warn(`Invalid result from formula for process "${process.name}":`, result);
       return 0;
@@ -240,8 +241,6 @@ export const calculateOperationTime = (operation: Operation, process: Process, t
     return result;
   } catch (e) {
     console.error(`Error executing formula for process "${process.name}":`, e);
-    console.error(`Formula:`, process.formula);
-    console.error(`Parameters:`, executionParams);
     return 0;
   }
 };
@@ -266,7 +265,11 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   // 1. Material Cost Calculation
   const materialCostPerKg = getConvertedPrice(materialType, 'material', region, regionCosts, inputs.materialCostPerKg, targetCurrency);
 
-  const totalMaterialCostPerKg = materialCostPerKg + (transportCostPerKg || 0) + (heatTreatmentCostPerKg || 0);
+  // Fix: Ensured numeric types to resolve potential "+" operator error when types are unknown
+  const transport = Number(transportCostPerKg) || 0;
+  const heatTreatment = Number(heatTreatmentCostPerKg) || 0;
+  const totalMaterialCostPerKg = materialCostPerKg + transport + heatTreatment;
+  
   const rawMaterialPartCost = rawMaterialWeightKg * totalMaterialCostPerKg;
   const materialCost = rawMaterialPartCost * batchVolume;
 
@@ -285,9 +288,9 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
 
 
   // 3. Time and Machining Cost Calculation
-  let totalCuttingTimeMin = 0;
-  let totalSetupTimeMin = 0;
-  let totalToolChangeTimeMin = 0;
+  let totalCuttingTimeMin = 0; 
+  let totalSetupTimeMin = 0; 
+  let totalToolChangeTimeMin = 0; 
   let totalMachiningCostForBatch = 0;
   let totalToolCostForBatch = 0;
   const operationTimeBreakdown: { processName: string; timeMin: number; id: string; machineName?: string }[] = [];
@@ -296,15 +299,14 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
       const machine = machines.find(m => m.id === setup.machineId);
       const efficiencyDivisor = (setup.efficiency > 0 && setup.efficiency <= 1) ? setup.efficiency : 1;
 
-      let timeOnThisMachineMin = 0;
+      const setupTimeForThisSetupMin = (setup.timePerSetupMin || 0) / efficiencyDivisor;
+      const toolChangeTimeForThisSetupMin = (setup.operations.length * ((setup.toolChangeTimeSec || 0) / 60)) / efficiencyDivisor;
+      const batchLevelTimeForThisSetup = setupTimeForThisSetupMin + toolChangeTimeForThisSetupMin;
       
-      const effectiveSetupTime = (setup.timePerSetupMin || 0) / efficiencyDivisor;
-      totalSetupTimeMin += effectiveSetupTime;
-      timeOnThisMachineMin += effectiveSetupTime;
-      
-      const effectiveToolChangeTime = (setup.operations.length * ((setup.toolChangeTimeSec || 0) / 60)) / efficiencyDivisor;
-      totalToolChangeTimeMin += effectiveToolChangeTime;
-      timeOnThisMachineMin += effectiveToolChangeTime;
+      totalSetupTimeMin += setupTimeForThisSetupMin;
+      totalToolChangeTimeMin += toolChangeTimeForThisSetupMin;
+
+      let cuttingTimeForThisSetupMin = 0;
 
       setup.operations.forEach(op => {
           const processDef = processes.find(p => p.name === op.processName);
@@ -312,15 +314,12 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
           const rawOpTimeMin = processDef ? calculateOperationTime(op, processDef, tool) : 0;
           const effectiveOpTimeMin = rawOpTimeMin / efficiencyDivisor;
           
-          // Tool Cost Calculation for this operation
           if (tool && tool.price != null && tool.price > 0) {
             const regionalToolPrice = getConvertedPrice(tool.id, 'tool', region, regionCosts, tool.price, targetCurrency);
-            // Prioritize operation-specific tool life, fallback to library tool life.
             const toolLifeHours = op.estimatedToolLifeHours ?? tool.estimatedLife;
             if (toolLifeHours != null && toolLifeHours > 0) {
               const toolLifeMinutes = toolLifeHours * 60;
               const toolCostPerMinute = regionalToolPrice / toolLifeMinutes;
-              // User formula: Operation Tool Cost = Tool Cost/Min * Operation Cycle Time
               const opToolCost = toolCostPerMinute * effectiveOpTimeMin;
               totalToolCostForBatch += opToolCost * batchVolume;
             }
@@ -332,24 +331,26 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
               id: op.id,
               machineName: machine?.name,
           });
+          
           totalCuttingTimeMin += effectiveOpTimeMin;
-          timeOnThisMachineMin += effectiveOpTimeMin;
+          cuttingTimeForThisSetupMin += effectiveOpTimeMin;
       });
       
       if (machine) {
         const machineHourlyRate = getConvertedPrice(machine.id, 'machine', region, regionCosts, machine.hourlyRate, targetCurrency);
-        totalMachiningCostForBatch += (timeOnThisMachineMin / 60) * machineHourlyRate;
+        const totalMachineTimeForThisSetupMin = (cuttingTimeForThisSetupMin * batchVolume) + batchLevelTimeForThisSetup;
+        const costForThisSetup = (totalMachineTimeForThisSetupMin / 60) * machineHourlyRate;
+        totalMachiningCostForBatch += costForThisSetup;
       }
   });
 
-  const totalMachineTimeMinutes = totalCuttingTimeMin + totalSetupTimeMin + totalToolChangeTimeMin;
-  const totalMachineTimeHours = totalMachineTimeMinutes / 60;
-  const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutes / batchVolume : 0;
+  const totalMachineTimeMinutesForBatch = (totalCuttingTimeMin * batchVolume) + totalSetupTimeMin + totalToolChangeTimeMin;
+  const totalMachineTimeHours = totalMachineTimeMinutesForBatch / 60;
+  const cycleTimePerPartMin = batchVolume > 0 ? totalMachineTimeMinutesForBatch / batchVolume : 0;
   
   const machiningCostPerPart = batchVolume > 0 ? totalMachiningCostForBatch / batchVolume : 0;
   const toolCostPerPart = batchVolume > 0 ? totalToolCostForBatch / batchVolume : 0;
   
-  // 4. Markup Calculation
   const baseCost1 = rawMaterialPartCost + machiningCostPerPart + toolCostPerPart;
   const baseCost2 = baseCost1 + surfaceTreatmentCostPerPart;
   
@@ -366,7 +367,6 @@ export const calculateMachiningCosts = (inputs: MachiningInput, machines: Machin
   
   const totalMarkupCostPerPart = Object.values(markupCostsPerPart).reduce((sum, cost) => sum + cost, 0);
 
-  // 5. Final Cost Calculation
   const costPerPart = baseCost1 + surfaceTreatmentCostPerPart + totalMarkupCostPerPart;
   const totalCost = costPerPart * batchVolume;
 

@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, Title } from 'chart.js';
@@ -8,7 +10,8 @@ import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { Button } from '../components/ui/Button';
 import { calculateMachiningCosts, calculateBilletWeight, calculateOperationTime } from '../services/calculationService';
-import { RAW_MATERIAL_PROCESSES, BILLET_SHAPES, MACHINE_TYPES, CURRENCY_CONVERSION_RATES_TO_USD, ALL_CURRENCIES } from '../constants';
+// FIX: Import INITIAL_INPUT from constants file.
+import { RAW_MATERIAL_PROCESSES, BILLET_SHAPES, MACHINE_TYPES, CURRENCY_CONVERSION_RATES_TO_USD, ALL_CURRENCIES, SUPER_ADMIN_EMAILS, INITIAL_INPUT } from '../constants';
 import { OperationModal } from '../components/OperationModal';
 import { DisplayField } from '../components/ui/DisplayField';
 import { CloseIcon } from '../components/ui/CloseIcon';
@@ -23,46 +26,7 @@ const M_MIN_TO_SFM = 3.28084;
 const KG_TO_LB = 2.20462;
 const M2_TO_FT2 = 10.7639;
 
-const INITIAL_INPUT: MachiningInput = {
-  id: '',
-  calculationNumber: '',
-  partNumber: '',
-  partName: '',
-  customerName: '',
-  revision: 'A',
-  annualVolume: 1000,
-  batchVolume: 100,
-  createdAt: new Date().toISOString(),
-  partImage: '',
-  unitSystem: 'Metric',
-  region: 'Default',
-  currency: 'USD',
-  materialCategory: '',
-  materialType: '',
-  materialCostPerKg: 0,
-  materialDensityGcm3: 0,
-  rawMaterialProcess: 'Billet',
-  billetShape: 'Block',
-  billetShapeParameters: { length: 100, width: 100, height: 50 },
-  rawMaterialWeightKg: 0,
-  finishedPartWeightKg: 0,
-  partSurfaceAreaM2: 0,
-  transportCostPerKg: 0,
-  heatTreatmentCostPerKg: 0,
-  surfaceTreatments: [],
-  setups: [],
-  markups: {
-    general: 8,
-    admin: 5,
-    sales: 2,
-    miscellaneous: 1,
-    packing: 5,
-    transport: 5,
-    profit: 20,
-    duty: 0,
-  },
-};
-
+// FIX: Removed INITIAL_INPUT constant as it has been moved to constants.ts
 const currencySymbols: { [key: string]: string } = {
   USD: '$',
   EUR: '€',
@@ -91,12 +55,73 @@ const MarkupSlider: React.FC<MarkupSliderProps> = ({ label, name, value, onChang
             name={name}
             value={value}
             onChange={(e) => onChange(name, e.target.value)}
-            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary mt-2"
+            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary mt-2 touch-action-none"
         />
     </div>
 );
 
-export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, regionCosts, regionCurrencyMap, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation, theme, onNavigate }) => {
+const BilletVisualizer: React.FC<{ shape: string | undefined }> = ({ shape }) => {
+    const stroke = "currentColor";
+    const fill = "none";
+    const className = "w-12 h-12 text-primary opacity-80";
+
+    if (!shape) return null;
+
+    let icon = null;
+
+    switch (shape) {
+        case 'Block':
+        case 'Plate':
+        case 'Bar':
+        case 'Cube':
+            icon = (
+                <svg viewBox="0 0 24 24" className={className} strokeWidth="1.5" stroke={stroke} fill={fill}>
+                    <path d="M12 3l10 5v10l-10 5L2 18V8l10-5z" />
+                    <path d="M2 8l10 5 10-5" />
+                    <path d="M12 13v10" />
+                </svg>
+            );
+            break;
+        case 'Cylinder':
+        case 'Rod':
+            icon = (
+                <svg viewBox="0 0 24 24" className={className} strokeWidth="1.5" stroke={stroke} fill={fill}>
+                    <ellipse cx="12" cy="5" rx="10" ry="3" />
+                    <path d="M2 5v14c0 1.66 4.48 3 10 3s10-1.34 10-3V5" />
+                </svg>
+            );
+            break;
+        case 'Tube':
+            icon = (
+                <svg viewBox="0 0 24 24" className={className} strokeWidth="1.5" stroke={stroke} fill={fill}>
+                    <ellipse cx="12" cy="5" rx="10" ry="3" />
+                    <ellipse cx="12" cy="5" rx="5" ry="1.5" />
+                    <path d="M2 5v14c0 1.66 4.48 3 10 3s10-1.34 10-3V5" />
+                </svg>
+            );
+            break;
+        case 'Rectangle Tube':
+             icon = (
+                <svg viewBox="0 0 24 24" className={className} strokeWidth="1.5" stroke={stroke} fill={fill}>
+                    <path d="M12 3l10 5v10l-10 5L2 18V8l10-5z" />
+                    <path d="M2 8l10 5 10-5" />
+                    <path d="M12 13v10" />
+                    <path d="M7 9l5 2.5 5-2.5" className="opacity-50"/>
+                </svg>
+            );
+            break;
+        default:
+            icon = null;
+    }
+
+    return (
+        <div className="flex items-center justify-center p-2 bg-background/50 rounded-lg border border-border">
+            {icon}
+        </div>
+    )
+}
+
+export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials, machines, processes, tools, regionCosts, regionCurrencyMap, onSave, onSaveDraft, onAutoSaveDraft, onBack, existingCalculation, theme, onNavigate, onHeaderInfoChange, onAddTool }) => {
   const [formData, setFormData] = useState<MachiningInput>(INITIAL_INPUT);
   const [errors, setErrors] = useState<{ [key: string]: any }>({});
   const [isUploading, setIsUploading] = useState(false);
@@ -106,11 +131,13 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     operation: Operation | null;
   }>({ isOpen: false, setupId: null, operation: null });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'unsaved' | 'saving'>('idle');
+  const [collapsedSetups, setCollapsedSetups] = useState<Set<string>>(new Set());
 
   const isInitialMount = useRef(true);
   const debounceTimeout = useRef<number | null>(null);
   
   const isMetric = formData.unitSystem === 'Metric';
+  const isSuperAdmin = useMemo(() => SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()), [user.email]);
 
   const currency = formData.currency || 'USD';
   const currencySymbol = currencySymbols[currency] || '$';
@@ -123,11 +150,21 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     }
   }, [currency, currencySymbol]);
 
+  // Effect to update header info when relevant form data changes
+  useEffect(() => {
+    onHeaderInfoChange({
+        partNumber: formData.partNumber,
+        calculationNumber: formData.calculationNumber
+    });
+    // Cleanup on unmount
+    return () => {
+        onHeaderInfoChange(null);
+    };
+  }, [formData.partNumber, formData.calculationNumber, onHeaderInfoChange]);
+
   const availableRegions = useMemo(() => {
     const regionsFromMap = [...new Set(regionCurrencyMap.map(rcm => rcm.region))];
-    // Ensure Default is always an option and comes first
-    const sorted = regionsFromMap.filter(r => r !== 'Default').sort();
-    return ['Default', ...sorted];
+    return regionsFromMap.sort();
   }, [regionCurrencyMap]);
 
   const getPriceInfo = useCallback((
@@ -149,15 +186,8 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
       let costEntry = getRegionCost(region);
       let warning: string | undefined = undefined;
 
-      if (!costEntry && region !== 'Default') {
-          costEntry = getRegionCost('Default');
-          if (costEntry) {
-              warning = `Price for ${itemName} in '${region}' not available. Using 'Default' region price.`;
-          }
-      }
-
       if (!costEntry) {
-          warning = `Price for ${itemName} in '${region}' and 'Default' regions not available. Using library fallback price.`;
+          warning = `Price for ${itemName} in '${region}' not available. Using library fallback price.`;
       }
 
       const price = costEntry ? costEntry.price : fallbackPrice;
@@ -339,12 +369,12 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
   const handleRegionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRegion = e.target.value;
-
-    const mapping = regionCurrencyMap.find(rc => rc.region === newRegion);
-    const defaultMapping = regionCurrencyMap.find(rc => rc.region === 'Default');
     
-    // Use region's currency, fallback to Default's currency, then to USD.
-    const newCurrency = mapping?.currency || defaultMapping?.currency || 'USD';
+    const userMapping = regionCurrencyMap.find(rcm => rcm.user_id === user.id && rcm.region === newRegion);
+    const globalMapping = regionCurrencyMap.find(rcm => !rcm.user_id && rcm.region === newRegion);
+    const mapping = userMapping || globalMapping;
+    
+    const newCurrency = mapping?.currency || 'USD'; // Fallback to USD if no mapping found somehow
 
     setFormData(prev => ({
         ...prev,
@@ -519,6 +549,18 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
     setFormData(prev => ({ ...prev, setups: prev.setups.map(s => s.id === setupId ? { ...s, operations: s.operations.filter(o => o.id !== operationId) } : s) }));
   };
   
+  const toggleSetupCollapse = (setupId: string) => {
+    setCollapsedSetups(prev => {
+        const newSet = new Set(prev);
+        if (newSet.has(setupId)) {
+            newSet.delete(setupId);
+        } else {
+            newSet.add(setupId);
+        }
+        return newSet;
+    });
+  };
+  
   const formatParameters = (op: Operation, process: Process | undefined): string => {
     if (!process || !Array.isArray(process.parameters)) return 'N/A';
     const params = process.parameters as ProcessParameter[];
@@ -690,7 +732,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
 
   return (
-    <div className="w-full mx-auto animate-fade-in">
+    <div className="w-full mx-auto animate-fade-in pb-24 sm:pb-0">
         {operationModalState.isOpen && operationModalState.setupId && (
             <OperationModal
                 isOpen={operationModalState.isOpen}
@@ -706,6 +748,8 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 getMetricValue={getMetricValue}
                 formatCurrency={formatCurrency}
                 onNavigate={onNavigate}
+                onAddTool={onAddTool}
+                isSuperAdmin={isSuperAdmin}
             />
         )}
         <div className="mb-6">
@@ -720,9 +764,9 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
             <form onSubmit={handleSubmit} className="space-y-8">
                 {/* Part Details */}
                 <Card>
-                    <div className="flex justify-between items-center border-b border-border pb-3 mb-6">
-                       <h2 className="text-2xl font-semibold text-primary">Part Details</h2>
-                       {formData.calculationNumber && <span className="text-lg font-bold text-text-secondary">#{formData.calculationNumber}</span>}
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border pb-3 mb-6 gap-2">
+                       <h2 className="text-xl sm:text-2xl font-semibold text-primary">Part Details</h2>
+                       {formData.calculationNumber && <span className="text-base sm:text-lg font-bold text-text-secondary">#{formData.calculationNumber}</span>}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                         <Input label="Part Number" name="partNumber" value={formData.partNumber} onChange={handleInputChange} error={errors.partNumber} />
@@ -734,7 +778,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                          <div>
                             <label className="block text-sm font-medium text-text-secondary mb-1">Part Image</label>
                             <div className="mt-1 flex items-center space-x-4">
-                                <div className="h-16 w-16 rounded-md bg-surface border border-border flex items-center justify-center">
+                                <div className="h-16 w-16 flex-shrink-0 rounded-md bg-surface border border-border flex items-center justify-center">
                                     {formData.partImage ? (
                                         <img src={formData.partImage} alt="Part" className="h-full w-full rounded-md object-cover"/>
                                     ) : (
@@ -749,14 +793,14 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                 </label>
                             </div>
                         </div>
-                        <Select label="Calculation Region" name="region" value={formData.region} onChange={handleRegionChange}>
+                        <Select label="Region" name="region" value={formData.region} onChange={handleRegionChange}>
                           {availableRegions.map(r => <option key={r} value={r}>{r}</option>)}
                         </Select>
-                        <DisplayField label="Currency (Auto)" value={formData.currency} />
+                        <DisplayField label="Currency" value={formData.currency} />
                         <div className="flex items-end">
-                            <div className="p-1 bg-background/50 border border-border rounded-lg flex items-center space-x-1">
-                                <Button type="button" onClick={() => handleInputChange({ target: { name: 'unitSystem', value: 'Metric' } } as any)} variant={isMetric ? 'primary' : 'secondary'}>Metric</Button>
-                                <Button type="button" onClick={() => handleInputChange({ target: { name: 'unitSystem', value: 'Imperial' } } as any)} variant={!isMetric ? 'primary' : 'secondary'}>Imperial</Button>
+                            <div className="p-1 bg-background/50 border border-border rounded-lg flex items-center space-x-1 w-full sm:w-auto">
+                                <Button type="button" onClick={() => handleInputChange({ target: { name: 'unitSystem', value: 'Metric' } } as any)} variant={isMetric ? 'primary' : 'secondary'} className="flex-1 sm:flex-none">Metric</Button>
+                                <Button type="button" onClick={() => handleInputChange({ target: { name: 'unitSystem', value: 'Imperial' } } as any)} variant={!isMetric ? 'primary' : 'secondary'} className="flex-1 sm:flex-none">Imperial</Button>
                             </div>
                         </div>
                     </div>
@@ -778,7 +822,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 
                 {/* Material Details */}
                  <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Material Details</h2>
+                    <h2 className="text-xl sm:text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Material Details</h2>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                         <Select label="Material Category" name="materialCategory" value={formData.materialCategory} onChange={(e) => {
                             handleInputChange(e);
@@ -807,7 +851,10 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
                 {/* Raw Material Geometry & Weight */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Raw Material Geometry & Weight</h2>
+                    <div className="flex justify-between items-center border-b border-border pb-3 mb-6">
+                        <h2 className="text-xl sm:text-2xl font-semibold text-primary">Raw Material Geometry</h2>
+                        <BilletVisualizer shape={formData.billetShape} />
+                    </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                         <Select label="Process" name="rawMaterialProcess" value={formData.rawMaterialProcess} onChange={handleInputChange}>
                             {RAW_MATERIAL_PROCESSES.map(p => <option key={p} value={p}>{p}</option>)}
@@ -845,80 +892,178 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 
                 {/* Machining Setups & Operations */}
                 <Card>
-                    <div className="flex justify-between items-center border-b border-border pb-3 mb-6">
-                        <h2 className="text-2xl font-semibold text-primary">Machining Setups</h2>
-                        <Button type="button" onClick={addSetup}>+ Add Setup</Button>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-border pb-3 mb-6 gap-3">
+                        <h2 className="text-xl sm:text-2xl font-semibold text-primary">Machining Setups</h2>
+                        <Button type="button" onClick={addSetup} className="w-full sm:w-auto">+ Add Setup</Button>
                     </div>
                     <div className="space-y-6">
                         {formData.setups.map((setup) => {
+                             const isCollapsed = collapsedSetups.has(setup.id);
                              const selectedMachine = machines.find(m => m.id === setup.machineId);
-                             const machinePriceInfo = selectedMachine ? getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name) : { price: 0 };
+                             
+                             const setupMetrics = (() => {
+                                 let totalCycleTime = 0;
+                                 let totalCost = 0;
+                                 if (selectedMachine) {
+                                     const machinePriceInfo = getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name);
+                                     const efficiencyDivisor = (setup.efficiency > 0 && setup.efficiency <= 1) ? setup.efficiency : 1;
+                             
+                                     setup.operations.forEach(op => {
+                                         const processDef = processes.find(p => p.name === op.processName);
+                                         const tool = tools.find(t => t.id === op.toolId);
+                                         const time = calculateOperationTime(op, processDef!, tool || null) / efficiencyDivisor;
+                             
+                                         totalCycleTime += time;
+                             
+                                         const machineCost = machinePriceInfo.price > 0 ? (time / 60) * machinePriceInfo.price : 0;
+                                         
+                                         let opToolCost = 0;
+                                         if (tool && tool.price != null && tool.price > 0) {
+                                             const regionalToolPriceInfo = getPriceInfo(tool.id, 'tool', formData.region, tool.price, tool.name);
+                                             const toolLifeHours = op.estimatedToolLifeHours ?? tool.estimatedLife;
+                                             if (toolLifeHours != null && toolLifeHours > 0) {
+                                                 const toolLifeMinutes = toolLifeHours * 60;
+                                                 opToolCost = (time / toolLifeMinutes) * regionalToolPriceInfo.price;
+                                             }
+                                         }
+                                         totalCost += machineCost + opToolCost;
+                                     });
+                                 }
+                                 return { totalCycleTime, totalCost };
+                             })();
                              
                              return (
-                            <div key={setup.id} className="bg-background/50 border border-border p-4 rounded-lg relative">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                                    <Input label="Setup Name" value={setup.name} onChange={e => updateSetupField(setup.id, 'name', e.target.value)} />
-                                     <Select label="Machine Type" value={setup.machineType || ''} onChange={e => {
-                                        updateSetupField(setup.id, 'machineType', e.target.value);
-                                        updateSetupField(setup.id, 'machineId', ''); // Reset machine on type change
-                                     }}>
-                                        <option value="">Select machine type...</option>
-                                        {MACHINE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                                    </Select>
-                                     <Select label="Machine" value={setup.machineId || ''} onChange={e => updateSetupField(setup.id, 'machineId', e.target.value)} disabled={!setup.machineType}>
-                                        <option value="">Select machine...</option>
-                                        {machines.filter(m => m.machineType === setup.machineType).map(m => <option key={m.id} value={m.id}>{m.name} ({m.brand})</option>)}
-                                    </Select>
-                                    <DisplayField label="Machine Rate" value={selectedMachine ? formatCurrency(machinePriceInfo.price) : 'N/A'} unit="/hr" />
-                                    <Input label="Setup Time" type="number" step="any" value={setup.timePerSetupMin} onChange={e => updateSetupField(setup.id, 'timePerSetupMin', parseFloat(e.target.value) || 0)} unit="min" />
-                                    <Input label="Tool Change Time" type="number" step="any" value={setup.toolChangeTimeSec} onChange={e => updateSetupField(setup.id, 'toolChangeTimeSec', parseFloat(e.target.value) || 0)} unit="sec/tool" />
-                                    <div className="lg:col-span-2">
-                                        <label className="block text-sm font-medium text-text-secondary mb-1 flex justify-between">
-                                            <span>Setup Efficiency</span>
-                                            <span className="font-semibold text-text-primary">{Math.round(setup.efficiency * 100)}%</span>
-                                        </label>
-                                        <input
-                                            type="range"
-                                            min="1"
-                                            max="100"
-                                            step="1"
-                                            value={Math.round(setup.efficiency * 100)}
-                                            onChange={e => handleEfficiencyChange(setup.id, e.target.value)}
-                                            className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary mt-2"
-                                        />
+                                <div key={setup.id} className="bg-background/50 border border-border rounded-lg overflow-hidden">
+                                    <div className="flex justify-between items-center p-4 cursor-pointer" onClick={() => toggleSetupCollapse(setup.id)}>
+                                        <div className="flex items-center gap-4 flex-grow min-w-0">
+                                            <h3 className="text-base sm:text-lg font-semibold text-text-primary truncate">{setup.name}</h3>
+                                            <button type="button" className="p-1 rounded-full hover:bg-surface flex-shrink-0" aria-label={isCollapsed ? 'Expand setup' : 'Collapse setup'}>
+                                                <svg className={`h-5 w-5 transition-transform duration-300 text-text-secondary ${isCollapsed ? '-rotate-90' : 'rotate-0'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
+                                            {isCollapsed && setup.operations.length > 0 && (
+                                                <div className="hidden sm:flex items-center gap-x-4 gap-y-1 ml-4 animate-fade-in flex-wrap">
+                                                    <span className="text-xs font-semibold text-text-secondary">
+                                                        Time: <span className="font-bold text-text-primary">{setupMetrics.totalCycleTime.toFixed(2)} min</span>
+                                                    </span>
+                                                    <span className="text-xs text-text-secondary">|</span>
+                                                    <span className="text-xs font-semibold text-text-secondary">
+                                                        Cost: <span className="font-bold text-text-primary">{formatCurrency(setupMetrics.totalCost)}</span>
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center space-x-2 sm:space-x-4 flex-shrink-0 ml-2">
+                                            <span className="text-xs text-text-muted bg-surface px-2 py-1 rounded-full border border-border whitespace-nowrap">{setup.operations.length} ops</span>
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); removeSetup(setup.id); }} className="text-text-muted hover:text-red-500 p-1 rounded-full hover:bg-red-500/10">
+                                                <CloseIcon />
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="col-span-full">
-                                    <Input label="Setup Comments" value={setup.description || ''} onChange={e => updateSetupField(setup.id, 'description', e.target.value)} />
-                                </div>
-                                <button type="button" onClick={() => removeSetup(setup.id)} className="absolute top-4 right-4 text-text-muted hover:text-red-500">
-                                    <CloseIcon />
-                                </button>
-                                
-                                <div className="pl-2 mt-6 border-t border-border pt-4">
-                                    <h4 className="text-lg font-semibold text-primary mb-4">Operations</h4>
-                                    <div className="overflow-x-auto">
-                                        {setup.operations.length > 0 ? (
-                                            <table className="min-w-full divide-y divide-border text-sm">
-                                                <thead className="bg-surface/50">
-                                                    <tr>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">#</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Operation</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Parameters</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Cycle Time</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Op. Tool Life (hrs)</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Machine Cost</th>
-                                                        <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool Cost</th>
-                                                        <th className="px-3 py-2 text-right font-medium text-text-secondary">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="bg-surface divide-y divide-border">
-                                                    {setup.operations.map((op, opIndex) => {
+                                    
+                                    <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isCollapsed ? 'max-h-0' : 'max-h-[3000px]'}`}>
+                                        <div className="px-3 sm:px-4 pb-4">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                                                <Input label="Setup Name" value={setup.name} onChange={e => updateSetupField(setup.id, 'name', e.target.value)} />
+                                                <Select label="Machine Type" value={setup.machineType || ''} onChange={e => {
+                                                    updateSetupField(setup.id, 'machineType', e.target.value);
+                                                    updateSetupField(setup.id, 'machineId', ''); // Reset machine on type change
+                                                }}>
+                                                    <option value="">Select type...</option>
+                                                    {MACHINE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                                                </Select>
+                                                <Select label="Machine" value={setup.machineId || ''} onChange={e => updateSetupField(setup.id, 'machineId', e.target.value)} disabled={!setup.machineType}>
+                                                    <option value="">Select machine...</option>
+                                                    {machines.filter(m => m.machineType === setup.machineType).map(m => <option key={m.id} value={m.id}>{m.name} ({m.brand})</option>)}
+                                                </Select>
+                                                <DisplayField label="Machine Rate" value={selectedMachine ? formatCurrency(getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name).price) : 'N/A'} unit="/hr" />
+                                                <Input label="Setup Time" type="number" step="any" value={setup.timePerSetupMin} onChange={e => updateSetupField(setup.id, 'timePerSetupMin', parseFloat(e.target.value) || 0)} unit="min" />
+                                                <Input label="Tool Change Time" type="number" step="any" value={setup.toolChangeTimeSec} onChange={e => updateSetupField(setup.id, 'toolChangeTimeSec', parseFloat(e.target.value) || 0)} unit="sec/tool" />
+                                                <div className="lg:col-span-2">
+                                                    <label className="block text-sm font-medium text-text-secondary mb-1 flex justify-between">
+                                                        <span>Setup Efficiency</span>
+                                                        <span className="font-semibold text-text-primary">{Math.round(setup.efficiency * 100)}%</span>
+                                                    </label>
+                                                    <input
+                                                        type="range"
+                                                        min="1"
+                                                        max="100"
+                                                        step="1"
+                                                        value={Math.round(setup.efficiency * 100)}
+                                                        onChange={e => handleEfficiencyChange(setup.id, e.target.value)}
+                                                        className="w-full h-2 bg-border rounded-lg appearance-none cursor-pointer accent-primary mt-2 touch-action-none"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="col-span-full">
+                                                <Input label="Setup Comments" value={setup.description || ''} onChange={e => updateSetupField(setup.id, 'description', e.target.value)} />
+                                            </div>
+                                            
+                                            <div className="pl-0 sm:pl-2 mt-6 border-t border-border pt-4">
+                                                <h4 className="text-lg font-semibold text-primary mb-4">Operations</h4>
+                                                
+                                                {/* Desktop Table View */}
+                                                <div className="hidden sm:block overflow-x-auto">
+                                                    {setup.operations.length > 0 ? (
+                                                        <table className="min-w-full divide-y divide-border text-sm">
+                                                            <thead className="bg-surface/50">
+                                                                <tr>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">#</th>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">Operation</th>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">Tool</th>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">Parameters</th>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">Cycle Time</th>
+                                                                    <th className="px-3 py-2 text-left font-medium text-text-secondary">Cost</th>
+                                                                    <th className="px-3 py-2 text-right font-medium text-text-secondary">Actions</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="bg-surface divide-y divide-border">
+                                                                {setup.operations.map((op, opIndex) => {
+                                                                    const processDef = processes.find(p => p.name === op.processName);
+                                                                    const selectedTool = tools.find(t => t.id === op.toolId);
+                                                                    const time = calculateOperationTime(op, processDef!, selectedTool || null) / (setup.efficiency || 1);
+                                                                    const machineCost = selectedMachine && getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name).price > 0 ? (time / 60) * getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name).price : 0;
+                                                                    
+                                                                    let opToolCost = 0;
+                                                                    if (selectedTool && selectedTool.price != null && selectedTool.price > 0) {
+                                                                        const regionalToolPriceInfo = getPriceInfo(selectedTool.id, 'tool', formData.region, selectedTool.price, selectedTool.name);
+                                                                        const toolLifeHours = op.estimatedToolLifeHours ?? selectedTool.estimatedLife;
+                                                                        if (toolLifeHours != null && toolLifeHours > 0) {
+                                                                            const toolLifeMinutes = toolLifeHours * 60;
+                                                                            opToolCost = (time / toolLifeMinutes) * regionalToolPriceInfo.price;
+                                                                        }
+                                                                    }
+
+                                                                    return (
+                                                                        <tr key={op.id} className="hover:bg-background/40">
+                                                                            <td className="px-3 py-2 text-text-secondary">{opIndex + 1}</td>
+                                                                            <td className="px-3 py-2 font-semibold text-text-primary">{op.processName}</td>
+                                                                            <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{selectedTool?.name || 'N/A'}</td>
+                                                                            <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{formatParameters(op, processDef)}</td>
+                                                                            <td className="px-3 py-2 text-text-primary font-medium">{time.toFixed(2)} min</td>
+                                                                            <td className="px-3 py-2 text-green-500 font-medium">{formatCurrency(machineCost + opToolCost)}</td>
+                                                                            <td className="px-3 py-2 text-right space-x-2">
+                                                                                <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => handleOpenOperationModal(setup.id, op)}>Edit</Button>
+                                                                                <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs text-red-500 hover:bg-red-500/10" onClick={() => removeOperation(setup.id, op.id)}>Delete</Button>
+                                                                            </td>
+                                                                        </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                    ) : (
+                                                        <p className="text-center text-text-muted py-4">No operations added for this setup.</p>
+                                                    )}
+                                                </div>
+
+                                                {/* Mobile Operation Card View */}
+                                                <div className="sm:hidden space-y-3">
+                                                    {setup.operations.length > 0 ? setup.operations.map((op, opIndex) => {
                                                         const processDef = processes.find(p => p.name === op.processName);
                                                         const selectedTool = tools.find(t => t.id === op.toolId);
                                                         const time = calculateOperationTime(op, processDef!, selectedTool || null) / (setup.efficiency || 1);
-                                                        const machineCost = machinePriceInfo.price > 0 ? (time / 60) * machinePriceInfo.price : 0;
+                                                        const machineCost = selectedMachine && getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name).price > 0 ? (time / 60) * getPriceInfo(selectedMachine.id, 'machine', formData.region, selectedMachine.hourlyRate, selectedMachine.name).price : 0;
                                                         
                                                         let opToolCost = 0;
                                                         if (selectedTool && selectedTool.price != null && selectedTool.price > 0) {
@@ -931,45 +1076,53 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                                         }
 
                                                         return (
-                                                            <tr key={op.id} className="hover:bg-background/40">
-                                                                <td className="px-3 py-2 text-text-secondary">{opIndex + 1}</td>
-                                                                <td className="px-3 py-2 font-semibold text-text-primary">{op.processName}</td>
-                                                                <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{selectedTool?.name || 'N/A'}</td>
-                                                                <td className="px-3 py-2 text-text-secondary truncate max-w-xs">{formatParameters(op, processDef)}</td>
-                                                                <td className="px-3 py-2 text-text-primary font-medium">{time.toFixed(2)} min</td>
-                                                                <td className="px-3 py-2 text-text-primary font-medium">
-                                                                    {op.estimatedToolLifeHours 
-                                                                        ? op.estimatedToolLifeHours.toFixed(1) 
-                                                                        : (selectedTool?.estimatedLife ? `${selectedTool.estimatedLife} (default)` : 'N/A')}
-                                                                </td>
-                                                                <td className="px-3 py-2 text-green-500 font-medium">{formatCurrency(machineCost)}</td>
-                                                                <td className="px-3 py-2 text-orange-500 font-medium">{formatCurrency(opToolCost)}</td>
-                                                                <td className="px-3 py-2 text-right space-x-2">
-                                                                    <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => handleOpenOperationModal(setup.id, op)}>Edit</Button>
-                                                                    <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs text-red-500 hover:bg-red-500/10" onClick={() => removeOperation(setup.id, op.id)}>Delete</Button>
-                                                                </td>
-                                                            </tr>
+                                                            <div key={op.id} className="bg-surface/50 border border-border rounded-lg p-3 space-y-2">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <span className="text-xs font-bold text-text-muted mr-2">#{opIndex + 1}</span>
+                                                                        <span className="font-semibold text-text-primary">{op.processName}</span>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <span className="block text-green-500 font-bold">{formatCurrency(machineCost + opToolCost)}</span>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div className="text-xs text-text-secondary">
+                                                                    <span className="font-semibold text-text-muted">Tool:</span> {selectedTool?.name || 'N/A'}
+                                                                </div>
+                                                                <div className="text-xs text-text-secondary truncate">
+                                                                    <span className="font-semibold text-text-muted">Params:</span> {formatParameters(op, processDef)}
+                                                                </div>
+                                                                
+                                                                <div className="flex justify-between items-center pt-2 border-t border-border mt-2">
+                                                                    <span className="text-sm font-medium text-text-primary">{time.toFixed(2)} min</span>
+                                                                    <div className="flex space-x-2">
+                                                                        <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => handleOpenOperationModal(setup.id, op)}>Edit</Button>
+                                                                        <Button type="button" variant="secondary" className="!px-3 !py-1 text-xs text-red-500 hover:bg-red-500/10" onClick={() => removeOperation(setup.id, op.id)}>Delete</Button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        ) : (
-                                            <p className="text-center text-text-muted py-4">No operations added for this setup.</p>
-                                        )}
+                                                    }) : (
+                                                        <p className="text-center text-text-muted py-4">No operations added.</p>
+                                                    )}
+                                                </div>
+
+                                                <Button type="button" variant="secondary" onClick={() => handleOpenOperationModal(setup.id, null)} className="mt-4 w-full sm:w-auto" disabled={!setup.machineId}>+ Add Operation</Button>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <Button type="button" variant="secondary" onClick={() => handleOpenOperationModal(setup.id, null)} className="mt-4" disabled={!setup.machineId}>+ Add Operation</Button>
                                 </div>
-                            </div>
                         )})}
                     </div>
                 </Card>
                 
-                {/* Surface Treatment - Moved after Machining */}
+                {/* Surface Treatment */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Surface Treatment</h2>
+                    <h2 className="text-xl sm:text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Surface Treatment</h2>
                     <div className="space-y-4">
                         {formData.surfaceTreatments.map((treatment, index) => (
-                            <div key={treatment.id} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end bg-background/50 p-3 rounded-lg">
+                            <div key={treatment.id} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end bg-background/50 p-3 rounded-lg">
                                 <Input label="Treatment Name" value={treatment.name} onChange={e => updateSurfaceTreatment(index, 'name', e.target.value)} />
                                 <Input 
                                   label="Cost" 
@@ -989,24 +1142,24 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                         <option value="raw_weight">Raw Weight</option>
                                     </Select>
                                 ) : (
-                                    <div /> // Placeholder to maintain grid alignment
+                                    <div className="hidden sm:block" /> 
                                 )}
-                                <Button type="button" variant="secondary" onClick={() => removeSurfaceTreatment(treatment.id)} className="text-red-500 hover:bg-red-500/10 h-10 self-end">
+                                <Button type="button" variant="secondary" onClick={() => removeSurfaceTreatment(treatment.id)} className="text-red-500 hover:bg-red-500/10 h-10 w-full sm:w-auto">
                                     Remove
                                 </Button>
                             </div>
                         ))}
                         {formData.surfaceTreatments.length === 0 && <p className="text-text-muted text-center py-4">No surface treatments added.</p>}
                     </div>
-                    <Button type="button" variant="secondary" onClick={addSurfaceTreatment} className="mt-4">+ Add Treatment</Button>
+                    <Button type="button" variant="secondary" onClick={addSurfaceTreatment} className="mt-4 w-full sm:w-auto">+ Add Treatment</Button>
                 </Card>
 
                  {/* Cost Summary */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Cost Summary (per Part)</h2>
+                    <h2 className="text-xl sm:text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Cost Summary (per Part)</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
                         <DisplayField label="Raw Material Cost" value={formatCurrency(rawMaterialCostPerPart)} />
-                        <DisplayField label="Machining Cost" value={formatCurrency(machiningCostPerPart)} />
+                        <DisplayField label="Operation Cost" value={formatCurrency(machiningCostPerPart)} />
                         <DisplayField label="Tool Cost" value={formatCurrency(toolCostPerPart)} />
                         <DisplayField label="Surface Treatment Cost" value={formatCurrency(surfaceTreatmentCostPerPart)} />
                     </div>
@@ -1014,17 +1167,17 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                 
                 {/* Markups */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup</h2>
+                    <h2 className="text-xl sm:text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Markup</h2>
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                             <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">1. Applied to (Raw Material + Machining + Tool Cost)</h3>
+                             <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">1. Applied to (Raw Material + Operation + Tool Cost)</h3>
                             <MarkupSlider label="General" name="general" value={formData.markups.general} onChange={handleMarkupChange} />
                             <MarkupSlider label="Admin" name="admin" value={formData.markups.admin} onChange={handleMarkupChange} />
                             <MarkupSlider label="Sales" name="sales" value={formData.markups.sales} onChange={handleMarkupChange} />
                             <MarkupSlider label="Miscellaneous" name="miscellaneous" value={formData.markups.miscellaneous} onChange={handleMarkupChange} />
                         </div>
                         <div className="border-t border-border pt-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                            <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">2. Applied to (Raw Material + Machining + Tool + Surface Treatment)</h3>
+                            <h3 className="md:col-span-2 text-lg font-semibold text-text-secondary">2. Applied to (Raw Material + Operation + Tool + Surface Treatment)</h3>
                            <MarkupSlider label="Packing" name="packing" value={formData.markups.packing} onChange={handleMarkupChange} />
                            <MarkupSlider label="Transport" name="transport" value={formData.markups.transport} onChange={handleMarkupChange} />
                            <MarkupSlider label="Duty" name="duty" value={formData.markups.duty} onChange={handleMarkupChange} />
@@ -1035,7 +1188,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
 
                 {/* Part Cost Breakup */}
                 <Card>
-                    <h2 className="text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Part Cost Breakup</h2>
+                    <h2 className="text-xl sm:text-2xl font-semibold text-primary border-b border-border pb-3 mb-6">Part Cost Breakup</h2>
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
                         <div className="space-y-2">
                             {partCostBreakdown.map((item) => (
@@ -1049,7 +1202,7 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                                 <span className="font-bold text-primary text-lg">{formatCurrency(totalCostPerPart)}</span>
                             </div>
                         </div>
-                        <div className="h-80 relative">
+                        <div className="h-64 sm:h-80 relative">
                             <Pie data={pieChartData} options={pieChartOptions} />
                         </div>
                     </div>
@@ -1061,16 +1214,15 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         <h3 className="text-xl font-bold text-primary">Final Part Cost</h3>
                     </div>
                     <div className="bg-primary/10 p-6 text-center border-t-2 border-primary">
-                        {/* FIX: Corrected typo from `totalCostPerpart` to `totalCostPerPart`. */}
-                        <span className="text-4xl font-black text-primary">{formatCurrency(totalCostPerPart)}</span>
+                        <span className="text-3xl sm:text-4xl font-black text-primary">{formatCurrency(totalCostPerPart)}</span>
                         <span className="text-lg ml-2 text-text-secondary">/ Part</span>
                     </div>
                 </Card>
 
 
-                {/* Actions */}
-                <div className="flex justify-end items-center space-x-4 pt-6 border-t border-border">
-                    <div className="text-sm text-text-muted transition-opacity duration-300 mr-auto">
+                {/* Sticky Action Footer for Mobile / Standard Footer for Desktop */}
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-surface border-t border-border z-20 sm:static sm:bg-transparent sm:border-0 sm:p-0 flex justify-end items-center space-x-4 shadow-2xl sm:shadow-none">
+                    <div className="hidden sm:block text-sm text-text-muted transition-opacity duration-300 mr-auto">
                         {saveStatus === 'unsaved' && 'Changes detected...'}
                         {saveStatus === 'saving' && (
                             <div className="flex items-center">
@@ -1083,8 +1235,8 @@ export const CalculatorPage: React.FC<CalculatorPageProps> = ({ user, materials,
                         )}
                         {saveStatus === 'saved' && '✓ All changes saved'}
                     </div>
-                    <Button type="button" variant="secondary" onClick={handleSaveDraftClick}>Save Draft</Button>
-                    <Button type="submit">Calculate & Save</Button>
+                    <Button type="button" variant="secondary" onClick={handleSaveDraftClick} className="flex-1 sm:flex-none">Save Draft</Button>
+                    <Button type="submit" className="flex-1 sm:flex-none shadow-glow-primary">Calculate & Save</Button>
                 </div>
             </form>
         </main>

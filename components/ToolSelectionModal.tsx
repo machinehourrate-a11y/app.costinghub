@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Tool, View } from '../types';
 import { Card } from './ui/Card';
@@ -5,6 +6,7 @@ import { Button } from './ui/Button';
 import { Input } from './ui/Input';
 import { Select } from './ui/Select';
 import { TOOL_TYPES } from '../constants';
+import { ToolModal } from './ToolModal';
 
 interface ToolSelectionModalProps {
   isOpen: boolean;
@@ -13,14 +15,17 @@ interface ToolSelectionModalProps {
   tools: Tool[];
   machineType: string;
   onNavigate: (view: View) => void;
+  onAddTool?: (tool: Tool) => void;
+  isSuperAdmin?: boolean;
 }
 
-export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, onClose, onSelect, tools, machineType, onNavigate }) => {
+export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, onClose, onSelect, tools, machineType, onNavigate, onAddTool, isSuperAdmin = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
   const [brandFilter, setBrandFilter] = useState('All');
   const [minDiameter, setMinDiameter] = useState('');
   const [maxDiameter, setMaxDiameter] = useState('');
+  const [isCreatingTool, setIsCreatingTool] = useState(false);
 
   const brands = useMemo(() => {
     const brandSet = new Set(tools.map(t => t.brand));
@@ -56,11 +61,36 @@ export const ToolSelectionModal: React.FC<ToolSelectionModalProps> = ({ isOpen, 
   }, [tools, machineType, searchTerm, typeFilter, brandFilter, minDiameter, maxDiameter]);
 
   const handleCreateNew = () => {
-      onNavigate('toolLibrary');
-      onClose();
+      setIsCreatingTool(true);
+  };
+
+  const handleSaveNewTool = (newTool: Tool) => {
+      if (onAddTool) {
+          onAddTool(newTool);
+          onSelect(newTool); // Auto-select the newly created tool
+          setIsCreatingTool(false); // Close the creation modal
+          onClose(); // Close the selection modal
+      } else {
+          // Fallback if prop not provided (shouldn't happen with updated parent)
+          console.warn("onAddTool prop missing, navigating to library.");
+          onNavigate('toolLibrary');
+          onClose();
+      }
   };
 
   if (!isOpen) return null;
+
+  if (isCreatingTool) {
+      return (
+          <ToolModal 
+            tool={null} 
+            onSave={handleSaveNewTool} 
+            onClose={() => setIsCreatingTool(false)} 
+            currency="USD" // Default currency for new tools here, or pass user pref
+            isSuperAdmin={isSuperAdmin}
+          />
+      );
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4 animate-fade-in">

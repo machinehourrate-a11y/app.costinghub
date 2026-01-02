@@ -13,7 +13,7 @@ const formatCurrency = (value: number, currency: string) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(value);
   } catch (e) {
     console.error("Invalid currency code:", currency);
-    return `$${value.toFixed(2)}`; // Fallback to USD
+    return `$${value.toFixed(2)}`; 
   }
 };
 
@@ -28,7 +28,7 @@ const ResultRow: React.FC<{ label: string; value: string; className?: string }> 
   </div>
 );
 
-const markupLabels: { [key in keyof MarkupCosts]: string } = {
+const markupLabels: Record<string, string> = {
   general: 'General Markup',
   admin: 'Admin Markup',
   sales: 'Sales Markup',
@@ -55,8 +55,9 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currenc
   const allMarkupCosts = Object.entries(results.markupCosts || {})
     .filter(([, value]) => (value as number) > 0)
     .map(([key, value]) => ({
-      label: markupLabels[key as keyof MarkupCosts],
-      value: value,
+      // Fix: Use safer indexing to resolve "symbol cannot be used as index type" error
+      label: (markupLabels as Record<string, string>)[key] || key,
+      value: value as number,
       percentage: markups[key as keyof Markups] || 0,
     }));
   
@@ -100,14 +101,14 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ results, currenc
       <div>
           <h3 className="text-lg font-semibold text-primary mb-2">Cost Breakdown (Total Batch)</h3>
            <div className="bg-surface rounded-lg p-2 space-y-1">
-              <ResultRow label="Machining Cost" value={formatCurrency(results.machiningCost, currency)} className="bg-background/50"/>
+              <ResultRow label="Operation Cost" value={formatCurrency(results.machiningCost, currency)} className="bg-background/50"/>
               <ResultRow label="Tool Cost" value={formatCurrency(results.toolCost || 0, currency)} className=""/>
               <ResultRow label="Surface Treatment Cost" value={formatCurrency(results.surfaceTreatmentCost, currency)} className="bg-background/50"/>
               {allMarkupCosts.map((markup, index) => (
                 <ResultRow 
                   key={markup.label}
                   label={`${markup.label} (${markup.percentage}%)`}
-                  value={formatCurrency(markup.value as number, currency)}
+                  value={formatCurrency(markup.value, currency)}
                   className={index % 2 !== 0 ? 'bg-background/50' : ''}
                 />
               ))}

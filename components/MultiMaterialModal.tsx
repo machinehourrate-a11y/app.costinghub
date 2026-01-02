@@ -26,15 +26,11 @@ export const MultiMaterialModal: React.FC<MultiMaterialModalProps> = ({ onSave, 
     setSelectedIndices([]);
     try {
       const result = await suggestMultipleMaterials(prompt);
-      if (result) {
-        setSuggestions(result);
-        setSelectedIndices(result.map((_, index) => index)); // Select all by default
-      } else {
-        setError('Could not generate suggestions. Please try a different prompt.');
-      }
+      setSuggestions(result);
+      setSelectedIndices(result.map((_, index) => index)); // Select all by default
     } catch (err) {
       console.error('Gemini suggestion failed:', err);
-      setError('An error occurred while getting suggestions. Please check the console.');
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
     } finally {
       setIsGenerating(false);
     }
